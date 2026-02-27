@@ -87,38 +87,64 @@
     <script>
         // --- State ---
         let activeTab = 'summary';
-        let portfolios = [
+        const INITIAL_PORTFOLIOS = [
             {
                 id: 'p1',
                 name: 'Growth Tech',
                 color: '#6366f1',
+                cash: 5000,
                 holdings: [
-                    { symbol: 'AAPL', name: 'Apple Inc.', shares: 50, price: 185.92, value: 9296, change: 1.2, allocation: 35, currency: 'GBP', strategy: 'Growth' },
-                    { symbol: 'NVDA', name: 'NVIDIA Corp.', shares: 20, price: 788.17, value: 15763, change: 4.5, allocation: 45, currency: 'GBP', strategy: 'Growth' },
-                    { symbol: 'TSLA', name: 'Tesla, Inc.', shares: 15, price: 202.64, value: 3039, change: -2.1, allocation: 20, currency: 'GBP', strategy: 'Aggressive' },
+                    { 
+                        symbol: 'AAPL', name: 'Apple Inc.', shares: 50, price: 185.92, value: 9296, change: 1.2, allocation: 35, currency: 'GBP', strategy: 'Growth',
+                        trades: [{ shares: 50, price: 185.92, value: 9296, fxRate: 1, currency: 'GBP', date: '2024-01-15' }]
+                    },
+                    { 
+                        symbol: 'NVDA', name: 'NVIDIA Corp.', shares: 20, price: 788.17, value: 15763, change: 4.5, allocation: 45, currency: 'GBP', strategy: 'Growth',
+                        trades: [{ shares: 20, price: 788.17, value: 15763, fxRate: 1, currency: 'GBP', date: '2024-02-10' }]
+                    },
+                    { 
+                        symbol: 'TSLA', name: 'Tesla, Inc.', shares: 15, price: 202.64, value: 3039, change: -2.1, allocation: 20, currency: 'GBP', strategy: 'Aggressive',
+                        trades: [{ shares: 15, price: 202.64, value: 3039, fxRate: 1, currency: 'GBP', date: '2024-02-20' }]
+                    },
                 ]
             },
             {
                 id: 'p2',
                 name: 'Dividend Yield',
                 color: '#10b981',
+                cash: 2500,
                 holdings: [
-                    { symbol: 'JNJ', name: 'Johnson & Johnson', shares: 40, price: 161.25, value: 6450, change: 0.3, allocation: 30, currency: 'GBP', strategy: 'Income' },
-                    { symbol: 'KO', name: 'Coca-Cola Co.', shares: 100, price: 60.12, value: 6012, change: 0.8, allocation: 25, currency: 'GBP', strategy: 'Income' },
-                    { symbol: 'SCHD', name: 'Schwab US Dividend', shares: 120, price: 76.45, value: 9174, change: 0.5, allocation: 45, currency: 'GBP', strategy: 'Income' },
+                    { 
+                        symbol: 'JNJ', name: 'Johnson & Johnson', shares: 40, price: 161.25, value: 6450, change: 0.3, allocation: 30, currency: 'GBP', strategy: 'Income',
+                        trades: [{ shares: 40, price: 161.25, value: 6450, fxRate: 1, currency: 'GBP', date: '2023-11-05' }]
+                    },
+                    { 
+                        symbol: 'KO', name: 'Coca-Cola Co.', shares: 100, price: 60.12, value: 6012, change: 0.8, allocation: 25, currency: 'GBP', strategy: 'Income',
+                        trades: [{ shares: 100, price: 60.12, value: 6012, fxRate: 1, currency: 'GBP', date: '2023-12-12' }]
+                    },
+                    { 
+                        symbol: 'SCHD', name: 'Schwab US Dividend', shares: 120, price: 76.45, value: 9174, change: 0.5, allocation: 45, currency: 'GBP', strategy: 'Income',
+                        trades: [{ shares: 120, price: 76.45, value: 9174, fxRate: 1, currency: 'GBP', date: '2024-01-05' }]
+                    },
                 ]
             }
         ];
 
+        let portfolios = JSON.parse(localStorage.getItem('foliotrack_portfolios')) || INITIAL_PORTFOLIOS;
+
+        function savePortfolios() {
+            localStorage.setItem('foliotrack_portfolios', JSON.stringify(portfolios));
+        }
+
         let chartInstance = null;
 
         // --- Utilities ---
-        const formatCurrency = (value) => {
+        const formatCurrency = (value, decimals = 2) => {
             return new Intl.NumberFormat('en-GB', {
                 style: 'currency',
                 currency: 'GBP',
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0,
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals,
             }).format(value);
         };
 
@@ -145,6 +171,18 @@
 
                     const startIdx = (isNaN(parseFloat(rawData[0][2])) && isNaN(parseFloat(rawData[0][3]))) ? 1 : 0;
                     const portfoliosMap = {};
+                    
+                    // Deduplication signature set
+                    const existingSignatures = new Set();
+                    portfolios.forEach(p => {
+                        p.holdings.forEach(h => {
+                            (h.trades || []).forEach(t => {
+                                existingSignatures.add(`${p.name}|${h.symbol}|${t.shares}|${t.price}|${t.date}`);
+                            });
+                        });
+                    });
+
+                    let newRowsAdded = 0;
 
                     for (let i = startIdx; i < rawData.length; i++) {
                         const row = rawData[i];
@@ -156,13 +194,19 @@
                         const price = parseFloat(row[3] || '0');
                         const currency = row[4]?.trim() || 'GBP';
                         const fxRate = parseFloat(row[5] || '1');
+                        const date = row[6]?.trim() || 'N/A'; // Column G is index 6
                         const strategy = row[12]?.trim() || 'N/A';
                         
                         let adjustedPrice = price;
                         if (currency === 'GBp') adjustedPrice = price / 100;
                         if (currency !== 'USD' && currency !== 'GBP' && currency !== 'GBp') adjustedPrice *= fxRate;
                         
+                        const signature = `${portfolioName}|${symbol}|${shares}|${adjustedPrice}|${date}`;
+                        if (existingSignatures.has(signature)) continue;
+
+                        newRowsAdded++;
                         const value = shares * adjustedPrice;
+                        const trade = { shares, price: adjustedPrice, value, fxRate, currency, date };
                         
                         if (!portfoliosMap[portfolioName]) portfoliosMap[portfolioName] = {};
                         
@@ -174,39 +218,91 @@
                                 ...existing,
                                 shares: totalShares,
                                 value: totalValue,
-                                price: totalShares > 0 ? totalValue / totalShares : 0
+                                price: totalShares > 0 ? totalValue / totalShares : 0,
+                                trades: [...(existing.trades || []), trade]
                             };
                         } else {
                             portfoliosMap[portfolioName][symbol] = {
-                                symbol, name: symbol, shares, price: adjustedPrice, value, change: 0, allocation: 0, strategy, currency
+                                symbol, name: symbol, shares, price: adjustedPrice, value, change: 0, allocation: 0, strategy, currency,
+                                trades: [trade]
                             };
                         }
                     }
 
-                    const newPortfolios = Object.entries(portfoliosMap).map(([name, symbolMap], idx) => {
-                        const holdings = Object.values(symbolMap);
-                        const totalValue = holdings.reduce((acc, h) => acc + h.value, 0);
-                        const holdingsWithAllocation = holdings.map(h => ({
-                            ...h,
-                            allocation: totalValue > 0 ? Math.round((h.value / totalValue) * 100) : 0
-                        }));
+                    if (newRowsAdded === 0) {
+                        alert('No new unique trades found in CSV.');
+                        event.target.value = '';
+                        return;
+                    }
 
-                        return {
-                            id: `import-${Date.now()}-${idx}`,
-                            name,
-                            color: ['#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f43f5e', '#10b981'][idx % 6],
-                            holdings: holdingsWithAllocation
-                        };
+                    Object.entries(portfoliosMap).forEach(([name, symbolMap], pIdx) => {
+                        const existingPortfolio = portfolios.find(p => p.name === name);
+                        const newHoldings = Object.values(symbolMap);
+
+                        if (existingPortfolio) {
+                            newHoldings.forEach(newH => {
+                                const existingH = existingPortfolio.holdings.find(h => h.symbol === newH.symbol);
+                                if (existingH) {
+                                    const totalShares = existingH.shares + newH.shares;
+                                    const totalValue = existingH.value + newH.value;
+                                    existingH.shares = totalShares;
+                                    existingH.value = totalValue;
+                                    existingH.price = totalShares > 0 ? totalValue / totalShares : 0;
+                                    existingH.trades = [...(existingH.trades || []), ...newH.trades];
+                                } else {
+                                    existingPortfolio.holdings.push(newH);
+                                }
+                            });
+                        } else {
+                            portfolios.push({
+                                id: `import-${Date.now()}-${pIdx}`,
+                                name,
+                                color: ['#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f43f5e', '#10b981'][portfolios.length % 6],
+                                holdings: newHoldings,
+                                cash: 0
+                            });
+                        }
                     });
 
-                    if (newPortfolios.length > 0) {
-                        portfolios = [...portfolios, ...newPortfolios];
-                        activeTab = newPortfolios[0].id;
-                        render();
-                    }
+                    savePortfolios();
+                    render();
                     event.target.value = '';
                 }
             });
+        }
+
+        let expandedAsset = null;
+
+        function toggleExpand(symbol) {
+            expandedAsset = expandedAsset === symbol ? null : symbol;
+            renderContent();
+            lucide.createIcons();
+        }
+
+        function refreshPrices(portfolioId) {
+            const p = portfolios.find(p => p.id === portfolioId);
+            if (!p) return;
+
+            // Simulate fetching from Google Finance API
+            p.holdings.forEach(h => {
+                const fluctuation = 1 + (Math.random() * 0.1 - 0.05); // +/- 5%
+                h.currentPrice = (h.currentPrice || h.price) * fluctuation;
+            });
+
+            savePortfolios();
+            render();
+            
+            // Show a brief notification (simulated)
+            console.log(`Prices refreshed for ${p.name} using Google Finance API simulation.`);
+        }
+
+        function updateCash(id, amount) {
+            const p = portfolios.find(p => p.id === id);
+            if (p) {
+                p.cash = parseFloat(amount) || 0;
+                savePortfolios();
+                render();
+            }
         }
 
         // --- Rendering ---
@@ -260,7 +356,7 @@
         }
 
         function renderSummary(container) {
-            const totalValue = portfolios.reduce((acc, p) => acc + p.holdings.reduce((hAcc, h) => hAcc + h.value, 0), 0);
+            const totalValue = portfolios.reduce((acc, p) => acc + p.holdings.reduce((hAcc, h) => hAcc + h.value, 0) + (p.cash || 0), 0);
             const topHoldings = portfolios.flatMap(p => p.holdings).sort((a, b) => b.value - a.value).slice(0, 5);
 
             container.innerHTML = `
@@ -330,18 +426,33 @@
         function renderDetail(container) {
             const p = portfolios.find(p => p.id === activeTab);
             if (!p) return;
-            const totalValue = p.holdings.reduce((acc, h) => acc + h.value, 0);
+
+            const holdingsValue = p.holdings.reduce((acc, h) => acc + h.value, 0);
+            const totalValue = holdingsValue + (p.cash || 0);
+            
+            const allDates = p.holdings.flatMap(h => (h.trades || []).map(t => t.date)).filter(d => d && d !== 'N/A');
+            const earliestDate = allDates.length > 0 ? allDates.reduce((min, d) => d < min ? d : min, allDates[0]) : 'N/A';
+            
+            const cashAllocation = totalValue > 0 ? Math.round(((p.cash || 0) / totalValue) * 100) : 0;
 
             container.innerHTML = `
                 <div class="space-y-8">
                     <div class="flex items-center justify-between">
                         <div>
                             <h2 class="text-3xl font-bold text-slate-900">${p.name}</h2>
-                            <p class="text-slate-500">Managing ${p.holdings.length} assets</p>
+                            <div class="flex items-center gap-4 mt-1">
+                                <p class="text-slate-500 text-sm">Managing ${p.holdings.length} assets</p>
+                            </div>
                         </div>
-                        <div class="text-right">
-                            <p class="text-sm text-slate-500 font-medium">Portfolio Value</p>
-                            <p class="text-3xl font-bold text-slate-900">${formatCurrency(totalValue)}</p>
+                        <div class="text-right flex flex-col items-end gap-2">
+                            <div>
+                                <p class="text-sm text-slate-500 font-medium">Total Portfolio Value</p>
+                                <p class="text-3xl font-bold text-slate-900">${formatCurrency(totalValue)}</p>
+                            </div>
+                            <button onclick="refreshPrices('${p.id}')" class="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                                Refresh Prices
+                            </button>
                         </div>
                     </div>
 
@@ -353,41 +464,135 @@
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Asset</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Strategy</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Currency</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Price</th>
+                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Avg Price</th>
+                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Current Price</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Holdings</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Value</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Allocation</th>
+                                        <th class="px-6 py-4"></th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-100">
-                                    ${p.holdings.map((h, idx) => `
-                                        <tr class="hover:bg-slate-50 transition-colors group">
-                                            <td class="px-6 py-4">
-                                                <div class="flex items-center gap-3">
-                                                    <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-[10px]">${h.symbol.slice(0, 2)}</div>
-                                                    <div>
-                                                        <p class="font-bold text-slate-900">${h.symbol}</p>
-                                                        <p class="text-xs text-slate-500">${h.name}</p>
-                                                    </div>
+                                    <!-- Cash Row (Now at the top) -->
+                                    <tr class="bg-slate-50/30 border-b border-slate-100">
+                                        <td class="px-6 py-4">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                                                    <i data-lucide="wallet" class="w-4 h-4"></i>
                                                 </div>
-                                            </td>
-                                            <td class="px-6 py-4 text-sm text-slate-600">
-                                                <span class="px-2 py-1 bg-slate-100 rounded-md text-[10px] font-bold uppercase tracking-wider">${h.strategy}</span>
-                                            </td>
-                                            <td class="px-6 py-4 text-sm font-medium text-slate-600">${h.currency}</td>
-                                            <td class="px-6 py-4 text-sm font-medium text-slate-700">${formatCurrency(h.price)}</td>
-                                            <td class="px-6 py-4 text-sm text-slate-600">${h.shares} shares</td>
-                                            <td class="px-6 py-4 text-sm font-bold text-slate-900">${formatCurrency(h.value)}</td>
-                                            <td class="px-6 py-4">
-                                                <div class="flex items-center gap-2">
-                                                    <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                        <div class="h-full rounded-full" style="width: ${h.allocation}%; background-color: ${p.color}"></div>
-                                                    </div>
-                                                    <span class="text-xs font-medium text-slate-500">${h.allocation}%</span>
+                                                <div>
+                                                    <p class="font-bold text-slate-900">Cash Balance</p>
+                                                    <p class="text-xs text-slate-500">Available Funds</p>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                    `).join('')}
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4 text-sm text-slate-600">
+                                            <span class="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md text-[10px] font-bold uppercase tracking-wider">
+                                                Liquidity
+                                            </span>
+                                        </td>
+                                        <td class="px-6 py-4 text-sm font-medium text-slate-600">GBP</td>
+                                        <td class="px-6 py-4 text-sm font-medium text-slate-400">N/A</td>
+                                        <td class="px-6 py-4 text-sm text-slate-400">N/A</td>
+                                        <td class="px-6 py-4">
+                                            <div class="relative group">
+                                                <input 
+                                                    type="number" 
+                                                    value="${p.cash || 0}" 
+                                                    onchange="updateCash('${p.id}', this.value)"
+                                                    class="w-32 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none font-bold text-slate-900 transition-colors py-1"
+                                                />
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <div class="flex items-center gap-2">
+                                                <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                    <div class="h-full rounded-full bg-emerald-500" style="width: ${cashAllocation}%"></div>
+                                                </div>
+                                                <span class="text-xs font-medium text-slate-500">${cashAllocation}%</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4"></td>
+                                    </tr>
+                                    ${p.holdings.map((h, idx) => {
+                                        const isExpanded = expandedAsset === h.symbol;
+                                        const allocation = totalValue > 0 ? Math.round((h.value / totalValue) * 100) : 0;
+                                        
+                                        const holdingDates = (h.trades || []).map(t => t.date).filter(d => d && d !== 'N/A');
+                                        const holdingEarliestDate = holdingDates.length > 0 
+                                            ? holdingDates.reduce((min, d) => d < min ? d : min, holdingDates[0]) 
+                                            : 'N/A';
+
+                                        return `
+                                            <tr onclick="toggleExpand('${h.symbol}')" class="hover:bg-slate-50 transition-colors group cursor-pointer ${isExpanded ? 'bg-slate-50/50' : ''}">
+                                                <td class="px-6 py-4">
+                                                    <div class="flex items-center gap-3">
+                                                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-[10px]">${h.symbol.slice(0, 2)}</div>
+                                                        <div>
+                                                            <p class="font-bold text-slate-900">${h.symbol}</p>
+                                                            <div class="flex flex-col">
+                                                                <p class="text-xs text-slate-500">${h.name || h.symbol}</p>
+                                                                <p class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                                                                    <i data-lucide="trending-up" class="w-2.5 h-2.5"></i> First: ${holdingEarliestDate}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td class="px-6 py-4 text-sm text-slate-600">
+                                                    <span class="px-2 py-1 bg-slate-100 rounded-md text-[10px] font-bold uppercase tracking-wider">${h.strategy || 'N/A'}</span>
+                                                </td>
+                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">${h.currency}</td>
+                                                <td class="px-6 py-4 text-sm font-medium text-slate-700">${formatCurrency(h.price, 2)}</td>
+                                                <td class="px-6 py-4 text-sm font-medium text-indigo-600">${formatCurrency(h.currentPrice || h.price * 1.05, 2)}</td>
+                                                <td class="px-6 py-4 text-sm text-slate-600">${h.shares} shares</td>
+                                                <td class="px-6 py-4 text-sm font-bold text-slate-900">${formatCurrency(h.value)}</td>
+                                                <td class="px-6 py-4">
+                                                    <div class="flex items-center gap-2">
+                                                        <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                            <div class="h-full rounded-full" style="width: ${allocation}%; background-color: ${p.color}"></div>
+                                                        </div>
+                                                        <span class="text-xs font-medium text-slate-500">${allocation}%</span>
+                                                    </div>
+                                                </td>
+                                                <td class="px-6 py-4 text-right">
+                                                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}"></i>
+                                                </td>
+                                            </tr>
+                                            ${isExpanded ? `
+                                                <tr>
+                                                    <td colspan="8" class="px-6 py-0 bg-slate-50/30">
+                                                        <div class="py-4 pl-14 pr-6 space-y-3">
+                                                            <div class="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2">
+                                                                <span>Trade History</span>
+                                                                <div class="flex gap-8">
+                                                                    <span class="w-24 text-right">Date</span>
+                                                                    <span class="w-24 text-right">Shares</span>
+                                                                    <span class="w-24 text-right">Price</span>
+                                                                    <span class="w-24 text-right">Value (GBP)</span>
+                                                                </div>
+                                                            </div>
+                                                            ${(h.trades || []).map((t, tIdx) => `
+                                                                <div class="flex items-center justify-between text-sm py-1">
+                                                                    <div class="flex items-center gap-2">
+                                                                        <div class="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                                                                        <span class="text-slate-500">Trade #${tIdx + 1}</span>
+                                                                        <span class="text-[10px] text-slate-400 ml-2">(${t.currency})</span>
+                                                                    </div>
+                                                                    <div class="flex gap-8 font-medium">
+                                                                        <span class="w-24 text-right text-slate-500 text-xs">${t.date || 'N/A'}</span>
+                                                                        <span class="w-24 text-right text-slate-600">${t.shares}</span>
+                                                                        <span class="w-24 text-right text-slate-600">${formatCurrency(t.price)}</span>
+                                                                        <span class="w-24 text-right text-slate-900">${formatCurrency(t.value)}</span>
+                                                                    </div>
+                                                                </div>
+                                                            `).join('')}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ` : ''}
+                                        `;
+                                    }).join('')}
                                 </tbody>
                             </table>
                         </div>
