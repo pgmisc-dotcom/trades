@@ -138,16 +138,45 @@
             if (!file) return;
 
             Papa.parse(file, {
-                header: true,
+                header: false,
                 skipEmptyLines: true,
                 complete: (results) => {
-                    const data = results.data;
-                    const newMappings = data
-                        .filter(row => row.Code && row.Sector)
-                        .map(row => ({
-                            code: row.Code.trim(),
-                            sector: row.Sector.trim()
-                        }));
+                    const rawData = results.data;
+                    if (rawData.length === 0) return;
+
+                    let codeIdx = 0;
+                    let sectorIdx = 1;
+
+                    const firstRow = rawData[0].map(c => String(c).toLowerCase().trim());
+                    const hasHeaders = firstRow.some(c => c.includes('code') || c.includes('sector') || c.includes('strategy') || c.includes('industry'));
+
+                    if (hasHeaders) {
+                        const cIdx = firstRow.findIndex(c => c.includes('code') || c.includes('strategy'));
+                        const sIdx = firstRow.findIndex(c => c.includes('sector') || c.includes('industry'));
+                        if (cIdx !== -1) codeIdx = cIdx;
+                        if (sIdx !== -1) sectorIdx = sIdx;
+                        else if (rawData[0].length >= 2) {
+                            sectorIdx = codeIdx === 0 ? 1 : 0;
+                            if (rawData[0].length === 4 && sectorIdx === 1) sectorIdx = 3;
+                        }
+                    } else {
+                        codeIdx = 0;
+                        sectorIdx = rawData[0].length === 4 ? 3 : 1;
+                    }
+
+                    const startIdx = hasHeaders ? 1 : 0;
+                    const newMappings = [];
+
+                    for (let i = startIdx; i < rawData.length; i++) {
+                        const row = rawData[i];
+                        if (!row || row.length < 2) continue;
+                        const code = row[codeIdx]?.trim();
+                        const sector = row[sectorIdx]?.trim();
+                        
+                        if (code && sector) {
+                            newMappings.push({ code, sector });
+                        }
+                    }
                     
                     strategyMappings = newMappings;
                     saveStrategies();
@@ -783,6 +812,23 @@
             `;
         }
 
+        function addManualMapping() {
+            const code = document.getElementById('manual-code').value.trim();
+            const sector = document.getElementById('manual-sector').value.trim();
+            if (code && sector) {
+                strategyMappings = strategyMappings.filter(m => m.code !== code);
+                strategyMappings.push({ code, sector });
+                saveStrategies();
+                render();
+            }
+        }
+
+        function deleteMapping(code) {
+            strategyMappings = strategyMappings.filter(m => m.code !== code);
+            saveStrategies();
+            render();
+        }
+
         function renderStrategies(container) {
             const sectorDataMap = {};
             let totalValue = 0;
@@ -822,34 +868,74 @@
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-slate-50 border-b border-slate-100">
-                                    <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Strategy Code</th>
-                                    <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mapped Sector</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-50">
-                                ${strategyMappings.map(m => `
-                                    <tr class="hover:bg-slate-50/50 transition-colors">
-                                        <td class="px-6 py-4">
-                                            <span class="px-2 py-1 bg-slate-100 rounded text-xs font-mono text-slate-600">${m.code}</span>
-                                        </td>
-                                        <td class="px-6 py-4">
-                                            <span class="font-medium text-slate-900">${m.sector}</span>
-                                        </td>
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                            <h3 class="text-lg font-bold text-slate-900 mb-4">Add Manual Mapping</h3>
+                            <div class="flex gap-4">
+                                <div class="flex-1">
+                                    <input 
+                                        type="text" 
+                                        id="manual-code"
+                                        placeholder="Strategy Code (e.g. T1)" 
+                                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                    />
+                                </div>
+                                <div class="flex-1">
+                                    <input 
+                                        type="text" 
+                                        id="manual-sector"
+                                        placeholder="Sector (e.g. Technology)" 
+                                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                    />
+                                </div>
+                                <button 
+                                    onclick="addManualMapping()"
+                                    class="bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors flex items-center gap-2"
+                                >
+                                    <i data-lucide="plus" class="w-4 h-4"></i>
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-100">
+                                        <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Strategy Code</th>
+                                        <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mapped Sector</th>
+                                        <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
                                     </tr>
-                                `).join('')}
-                                ${strategyMappings.length === 0 ? `
-                                    <tr>
-                                        <td colspan="2" class="px-6 py-12 text-center text-slate-400 italic">
-                                            No mappings imported yet. Upload a CSV with "Code" and "Sector" columns.
-                                        </td>
-                                    </tr>
-                                ` : ''}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody class="divide-y divide-slate-50">
+                                    ${strategyMappings.map(m => `
+                                        <tr class="hover:bg-slate-50/50 transition-colors">
+                                            <td class="px-6 py-4">
+                                                <span class="px-2 py-1 bg-slate-100 rounded text-xs font-mono text-slate-600">${m.code}</span>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <span class="font-medium text-slate-900">${m.sector}</span>
+                                            </td>
+                                            <td class="px-6 py-4 text-right">
+                                                <button 
+                                                    onclick="deleteMapping('${m.code}')"
+                                                    class="text-slate-400 hover:text-rose-600 transition-colors"
+                                                >
+                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                    ${strategyMappings.length === 0 ? `
+                                        <tr>
+                                            <td colspan="3" class="px-6 py-12 text-center text-slate-400 italic">
+                                                No mappings imported yet. Upload a CSV or add one manually.
+                                            </td>
+                                        </tr>
+                                    ` : ''}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                     <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
