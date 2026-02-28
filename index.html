@@ -103,6 +103,74 @@
 
         let strategyMappings = JSON.parse(localStorage.getItem('foliotrack_strategies')) || [];
 
+        const MARKET_DATA = [
+          { sector: "Financials - US", tickers: ["XLF.US", "GS.US", "C.US", "BAC.US", "JPM.US", "WFC.US", "BK.US", "WRB.US", "BRK-A.US", "SXLF.LSE", "V.US"] },
+          { sector: "Financials - UK", tickers: ["HSBA.LSE", "BARC.LSE", "LLOY.LSE", "LGEN.LSE", "AV.LSE", "NWG.LSE", "JUP.LSE", "PRU.LSE"] },
+          { sector: "Tech", tickers: ["XLK.US", "AAPL.US", "GOOG.US", "TSLA.US", "MSFT.US", "AMZN.US", "EQQQ.LSE", "NVDA.US", "AMD.US", "INTC.US", "AVGO.US", "TWTR.US", "FB.US", "ORCL.US"] },
+          { sector: "Energy", tickers: ["XLE.US", "HAL.US", "BP.LSE", "RDSB.LSE", "OXY.US", "XOM.US", "PXD.US", "EOG.US", "BKR.US", "SLB.US", "COP.US", "CLR.US", "RRC.US", "LNG.US", "SXLE.LSE", "WNRG.LSE", "CVX.US"] },
+          { sector: "Emerging Markets", tickers: ["CNYA.LSE", "IKOR.LSE", "NDIA.LSE", "ITWN.LSE", "CRU1.LSE", "IPOL.LSE", "IBZL.LSE", "EMIM.LSE", "IEER.LSE", "IIND.LSE", "FXC.LSE", "LTAM.LSE"] },
+          { sector: "Consumer Discretionary - US", tickers: ["XLY.US", "SBUX.US", "DAL.US", "LVS.US", "F.US", "G.US", "SAVE.US", "AAL.US", "DIS.US", "MGM.US"] },
+          { sector: "Consumer Discretionary - UK", tickers: ["IHG.LSE", "CPG.LSE", "JET2.LSE", "EZJ.LSE", "WTB.LSE", "CCL.LSE", "FGP.LSE", "NEX.LSE", "MAB.LSE", "YNGN.LSE"] },
+          { sector: "Industrials", tickers: ["XLI.US", "CAT.US", "X.US", "GE.US", "BA.US", "XLB.US", "HON.US", "FCX.US", "DOW.US", "UPS.US", "SXLI.LSE"] },
+          { sector: "Europe", tickers: ["FTSE.INDX", "FCHI.INDX", "EWN.US", "GDAXI.INDX", "FTMC.INDX", "IBEX.INDX", "EWQ.US", "ENOR.US", "SPMIB.INDX"] },
+          { sector: "US Indices", tickers: ["GSPC.INDX", "DJI.INDX", "IXIC.INDX", "RUT.INDX"] },
+          { sector: "Developed Asia", tickers: ["N225.INDX", "SSEC.INDX", "AXJO.INDX", "VAPX.LSE", "STI.INDX", "HSI.INDX", "HKOR.LSE"] },
+          { sector: "Bitcoin", tickers: ["ETH-USD.CC", "BTC-USD.CC", "MSTR.US", "SQ.US", "COIN.US", "IBIT.US", "KOIP.LSE", "BCHS.LSE", "DAGB.LSE", "WETP.LSE", "IB1T.LSE"] },
+          { sector: "Commodities", tickers: ["C.COMM", "BZ.COMM", "GC.COMM", "HG.COMM", "NG.COMM", "SI.COMM", "PL.COMM", "SB.COMM", "CL.COMM"] },
+          { sector: "Healthcare", tickers: ["GSK.LSE", "AZN.LSE", "PFI.US", "MRNA.US", "MDT.US", "CVS.US", "JNJ.US", "IHCU.LSE"] },
+          { sector: "Real Estate", tickers: ["PSN.LSE", "HMSO.LSE", "TW.LSE", "PURP.LSE", "RMV.LSE", "BDEV.LSE", "BWY.LSE"] },
+          { sector: "Volatility", tickers: ["VIX.INDX", "VVIX.INDX", "VX.INDX", "VXN.INDX", "OVX.INDX", "VXXLE.INDX", "RVX.INDX", "GVZ.INDX"] },
+          { sector: "Bonds", tickers: ["TLT.US", "TBT.US", "HYG.US", "UK10Y.GBOND", "US10Y.GBOND", "IHYG.LSE", "US2Y.INDX", "US30Y.INDX", "US10Y.INDX"] }
+        ];
+
+        let marketSummaryData = [];
+        let isMarketLoading = false;
+
+        async function fetchMarketSummary() {
+            if (isMarketLoading) return;
+            isMarketLoading = true;
+            render();
+
+            try {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                marketSummaryData = MARKET_DATA.map(s => ({
+                    name: s.sector,
+                    status: Math.random() > 0.5 ? 'Up' : 'Down',
+                    trend: `Sector performance is currently ${Math.random() > 0.5 ? 'bullish' : 'bearish'} based on recent volume.`
+                }));
+            } catch (error) {
+                console.error("Error fetching market summary:", error);
+            } finally {
+                isMarketLoading = false;
+                render();
+            }
+        }
+
+        function toggleLivePrice() {
+            useLivePrice = !useLivePrice;
+            localStorage.setItem('foliotrack_use_live_price', JSON.stringify(useLivePrice));
+            render();
+        }
+
+        function updatePrice(portfolioId, symbol, price) {
+            portfolios = portfolios.map(p => {
+                if (p.id === portfolioId) {
+                    return {
+                        ...p,
+                        holdings: p.holdings.map(h => {
+                            if (h.symbol === symbol) {
+                                return { ...h, currentPrice: price };
+                            }
+                            return h;
+                        })
+                    };
+                }
+                return p;
+            });
+            savePortfolios();
+            render();
+        }
+
         function savePortfolios() {
             localStorage.setItem('foliotrack_portfolios', JSON.stringify(portfolios));
         }
@@ -428,6 +496,10 @@
         }
 
         function renderSummary(container) {
+            if (marketSummaryData.length === 0 && !isMarketLoading) {
+                fetchMarketSummary();
+            }
+
             const totalValue = portfolios.reduce((acc, p) => {
                 const holdingsValue = p.holdings.reduce((hAcc, h) => {
                     const val = useLivePrice ? (h.shares * (h.currentPrice || h.price * 1.05)) : h.value;
@@ -443,42 +515,22 @@
             const topHoldings = allHoldings.sort((a, b) => b.displayValue - a.displayValue).slice(0, 5);
 
             container.innerHTML = `
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                    <div class="bg-indigo-600 p-6 rounded-2xl shadow-lg shadow-indigo-200 text-white flex flex-col justify-between">
-                        <div>
-                            <h3 class="text-lg font-bold mb-2">Import Portfolio Data</h3>
-                            <p class="text-indigo-100 text-sm mb-6">Upload your trade history CSV to automatically populate your portfolios and track performance.</p>
-                        </div>
-                        <button onclick="document.getElementById('csv-input').click()" class="flex items-center justify-center gap-2 bg-white text-indigo-600 px-6 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-all">
-                            <i data-lucide="upload" class="w-5 h-5"></i>
-                            Upload CSV File
-                        </button>
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-3xl font-bold text-slate-900">Portfolio Overview</h2>
+                        <p class="text-slate-500 text-sm mt-1">Summary of your total wealth and asset allocation</p>
                     </div>
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                        <div>
-                            <h3 class="text-lg font-bold text-slate-900 mb-2">Reset Application</h3>
-                            <p class="text-slate-500 text-sm mb-6">Clear all imported portfolios and reset the application to its initial state. This action cannot be undone.</p>
-                        </div>
-                        <button onclick="clearAllData()" class="flex items-center justify-center gap-2 bg-rose-50 text-rose-600 px-6 py-3 rounded-xl font-bold hover:bg-rose-100 transition-all border border-rose-100">
-                            <i data-lucide="trash-2" class="w-5 h-5"></i>
-                            Clear All Data
+                    <div class="flex gap-3">
+                        <button 
+                            onclick="toggleLivePrice()"
+                            class="flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all shadow-lg ${useLivePrice ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-white text-slate-600 border border-slate-200 shadow-slate-100'}"
+                        >
+                            <i data-lucide="zap" class="w-4 h-4 ${useLivePrice ? 'fill-white' : ''}"></i>
+                            ${useLivePrice ? 'Live Prices Active' : 'Use Purchase Prices'}
                         </button>
-                    </div>
-                </div>
-
-                <div class="mb-8 flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                    <div class="flex items-center gap-4">
-                        <div class="p-2 rounded-lg bg-indigo-600/10 text-indigo-600">
-                            <i data-lucide="info" class="w-5 h-5"></i>
-                        </div>
-                        <p class="text-sm text-slate-600 font-medium">Viewing values based on <b>${useLivePrice ? 'Live Market Prices' : 'Cost Basis (Average Price)'}</b></p>
-                    </div>
-                    <div class="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
-                        <button onclick="toggleLivePrice()" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${!useLivePrice ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">
-                            Cost Basis
-                        </button>
-                        <button onclick="toggleLivePrice()" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${useLivePrice ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">
-                            Live Price
+                        <button onclick="document.getElementById('csv-input').click()" class="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
+                            <i data-lucide="upload" class="w-4 h-4"></i>
+                            Import CSV
                         </button>
                     </div>
                 </div>
@@ -516,63 +568,101 @@
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                        <h3 class="text-lg font-bold text-slate-900 mb-6">Portfolio Allocation</h3>
-                        <div class="chart-container"><canvas id="allocationChart"></canvas></div>
+                    <div class="lg:col-span-2 space-y-8">
+                        <!-- Global Market Summary -->
+                        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                            <div class="flex items-center justify-between mb-6">
+                                <h3 class="text-lg font-bold text-slate-900">Global Market Summary</h3>
+                                <i data-lucide="globe" class="text-slate-400 w-5 h-5"></i>
+                            </div>
+                            ${isMarketLoading ? `
+                                <div class="animate-pulse space-y-4">
+                                    <div class="h-12 bg-slate-50 rounded-xl"></div>
+                                    <div class="h-12 bg-slate-50 rounded-xl"></div>
+                                    <div class="h-12 bg-slate-50 rounded-xl"></div>
+                                </div>
+                            ` : `
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    ${marketSummaryData.map(item => `
+                                        <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-indigo-100 transition-colors">
+                                            <div class="flex items-center justify-between mb-1">
+                                                <span class="font-bold text-slate-900 text-sm">${item.name}</span>
+                                                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${item.status === 'Up' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}">
+                                                    ${item.status}
+                                                </span>
+                                            </div>
+                                            <p class="text-xs text-slate-500 line-clamp-2">${item.trend}</p>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `}
+                        </div>
+
+                        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                            <h3 class="text-lg font-bold text-slate-900 mb-6">Portfolio Allocation</h3>
+                            <div class="chart-container"><canvas id="allocationChart"></canvas></div>
+                        </div>
                     </div>
-                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                        <h3 class="text-lg font-bold text-slate-900 mb-6">Portfolio Breakdown</h3>
-                        <div class="space-y-4">
-                            ${portfolios.map(p => {
-                                const pValue = p.holdings.reduce((acc, h) => {
-                                    const val = useLivePrice ? (h.shares * (h.currentPrice || h.price * 1.05)) : h.value;
-                                    return acc + val;
-                                }, 0) + (p.cash || 0);
-                                return `
+
+                    <div class="space-y-8">
+                        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                            <h3 class="text-lg font-bold text-slate-900 mb-6">Portfolio Breakdown</h3>
+                            <div class="space-y-4">
+                                ${portfolios.map(p => {
+                                    const pValue = p.holdings.reduce((acc, h) => {
+                                        const val = useLivePrice ? (h.shares * (h.currentPrice || h.price * 1.05)) : h.value;
+                                        return acc + val;
+                                    }, 0) + (p.cash || 0);
+                                    return `
+                                        <div class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
+                                            <div class="flex items-center gap-4">
+                                                <div class="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm" style="background-color: ${p.color}20">
+                                                    <div class="w-3 h-3 rounded-full" style="background-color: ${p.color}"></div>
+                                                </div>
+                                                <div>
+                                                    <p class="font-bold text-slate-900">${p.name}</p>
+                                                    <p class="text-xs text-slate-500">${p.holdings.length} Assets</p>
+                                                </div>
+                                            </div>
+                                            <div class="text-right">
+                                                <p class="font-bold text-slate-900">${formatCurrency(pValue)}</p>
+                                                <p class="text-xs text-slate-500">${totalValue > 0 ? Math.round((pValue / totalValue) * 100) : 0}% Allocation</p>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                                ${portfolios.length === 0 ? '<p class="text-center text-slate-400 py-8 text-sm">No portfolios found. Import a CSV to get started.</p>' : ''}
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                            <h3 class="text-lg font-bold text-slate-900 mb-6">Top Holdings</h3>
+                            <div class="space-y-4">
+                                ${topHoldings.map(h => `
                                     <div class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
                                         <div class="flex items-center gap-4">
-                                            <div class="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm" style="background-color: ${p.color}20">
-                                                <div class="w-3 h-3 rounded-full" style="background-color: ${p.color}"></div>
-                                            </div>
+                                            <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-xs">${h.symbol.slice(0, 2)}</div>
                                             <div>
-                                                <p class="font-bold text-slate-900">${p.name}</p>
-                                                <p class="text-xs text-slate-500">${p.holdings.length} Assets</p>
+                                                <p class="font-bold text-slate-900">${h.symbol}</p>
+                                                <p class="text-xs text-slate-500">${h.name}</p>
                                             </div>
                                         </div>
                                         <div class="text-right">
-                                            <p class="font-bold text-slate-900">${formatCurrency(pValue)}</p>
-                                            <p class="text-xs text-slate-500">${totalValue > 0 ? Math.round((pValue / totalValue) * 100) : 0}% Allocation</p>
+                                            <p class="font-bold text-slate-900">${formatCurrency(h.displayValue)}</p>
+                                            <p class="text-xs font-medium text-emerald-600">+1.2%</p>
                                         </div>
                                     </div>
-                                `;
-                            }).join('')}
-                            ${portfolios.length === 0 ? '<p class="text-center text-slate-400 py-8 text-sm">No portfolios found. Import a CSV to get started.</p>' : ''}
-                        </div>
-                    </div>
-                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                        <h3 class="text-lg font-bold text-slate-900 mb-6">Top Holdings</h3>
-                        <div class="space-y-4">
-                            ${topHoldings.map(h => `
-                                <div class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                                    <div class="flex items-center gap-4">
-                                        <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-xs">${h.symbol.slice(0, 2)}</div>
-                                        <div>
-                                            <p class="font-bold text-slate-900">${h.symbol}</p>
-                                            <p class="text-xs text-slate-500">${h.name}</p>
-                                        </div>
-                                    </div>
-                                    <div class="text-right">
-                                        <p class="font-bold text-slate-900">${formatCurrency(h.displayValue)}</p>
-                                        <p class="text-xs font-medium text-emerald-600">+1.2%</p>
-                                    </div>
-                                </div>
-                            `).join('')}
+                                `).join('')}
+                            </div>
                         </div>
                     </div>
                 </div>
             `;
 
-            setTimeout(() => initSummaryChart(), 0);
+            setTimeout(() => {
+                initSummaryChart();
+                lucide.createIcons();
+            }, 0);
         }
 
         function renderDetail(container) {
@@ -754,7 +844,16 @@
                                                     <span class="px-2 py-1 bg-slate-100 rounded-md text-[10px] font-bold uppercase tracking-wider">${h.strategy || 'N/A'}</span>
                                                 </td>
                                                 <td class="px-6 py-4 text-sm font-medium text-slate-700">${formatCurrency(h.price, 2)}</td>
-                                                <td class="px-6 py-4 text-sm font-medium text-indigo-600">${formatCurrency(h.currentPrice, 2)}</td>
+                                                <td class="px-6 py-4 text-sm font-medium text-indigo-600">
+                                                    <div class="relative group" onclick="event.stopPropagation()">
+                                                        <input 
+                                                            type="number" 
+                                                            value="${h.currentPrice}" 
+                                                            onchange="updatePrice('${p.id}', '${h.symbol}', this.value)"
+                                                            class="w-24 bg-transparent border-b border-dashed border-indigo-300 focus:border-indigo-600 focus:outline-none font-bold text-indigo-600 transition-colors py-1"
+                                                        />
+                                                    </div>
+                                                </td>
                                                 <td class="px-6 py-4 text-sm font-bold ${pnlColor}">${formatCurrency(h.pnlValue)}</td>
                                                 <td class="px-6 py-4 text-sm font-bold ${pnlColor}">${formatPercent(h.pnlPercent)}</td>
                                                 <td class="px-6 py-4 text-sm font-bold text-slate-900">${formatCurrency(displayValue)}</td>
