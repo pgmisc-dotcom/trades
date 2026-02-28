@@ -88,8 +88,10 @@
     <script>
         // --- State ---
         let activeTab = 'summary';
-        let useLivePrice = false;
+        let useLivePrice = JSON.parse(localStorage.getItem('foliotrack_use_live_price')) || false;
         let sortConfig = { key: 'symbol', direction: 'asc' };
+        let chartInstance = null;
+        let sectorChartInstance = null;
 
         const INITIAL_PORTFOLIOS = [];
 
@@ -178,8 +180,6 @@
         function saveStrategies() {
             localStorage.setItem('foliotrack_strategies', JSON.stringify(strategyMappings));
         }
-
-        let chartInstance = null;
 
         // --- Utilities ---
         const formatCurrency = (value, decimals = 2) => {
@@ -657,6 +657,13 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="mt-12 pt-8 border-t border-slate-200 flex justify-center">
+                    <button onclick="clearAllData()" class="flex items-center gap-2 px-6 py-3 bg-rose-50 text-rose-600 rounded-2xl text-sm font-bold hover:bg-rose-100 transition-all border border-rose-100 shadow-sm">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        Clear All Data & Reset Application
+                    </button>
+                </div>
             `;
 
             setTimeout(() => {
@@ -805,7 +812,7 @@
                                         <td class="px-6 py-4">
                                             <div class="flex items-center gap-2">
                                                 <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                    <div class="h-full rounded-full bg-emerald-500" style="width: ${cashAllocation}%\"></div>
+                                                    <div class="h-full rounded-full bg-emerald-500" style="width: ${cashAllocation}%"></div>
                                                 </div>
                                                 <span class="text-xs font-medium text-slate-500">${cashAllocation}%</span>
                                             </div>
@@ -909,6 +916,10 @@
                     </div>
                 </div>
             `;
+            
+            setTimeout(() => {
+                lucide.createIcons();
+            }, 0);
         }
 
         function addManualMapping() {
@@ -1065,7 +1076,9 @@
             const ctx = document.getElementById('sectorChart');
             if (!ctx) return;
             
-            new Chart(ctx, {
+            if (sectorChartInstance) sectorChartInstance.destroy();
+
+            sectorChartInstance = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
                     labels: data.map(d => d.name),
@@ -1086,6 +1099,7 @@
                 }
             });
         }
+        function initSummaryChart() {
             const ctx = document.getElementById('allocationChart');
             if (!ctx) return;
             
@@ -1128,6 +1142,7 @@
         }
 
         // --- Init ---
+        fetchMarketSummary();
         render();
     </script>
 </body>
