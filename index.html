@@ -71,9 +71,28 @@
             <div id="portfolio-list" class="space-y-1">
                 <!-- Portfolios will be injected here -->
             </div>
+
+            <div class="pt-4 space-y-2">
+                <button 
+                    onclick="document.getElementById('csv-input').click()"
+                    class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-indigo-600 hover:bg-indigo-50 border border-dashed border-indigo-200 mt-4 transition-all"
+                >
+                    <i data-lucide="upload" class="w-[18px] h-[18px]"></i>
+                    Import CSV
+                </button>
+
+                <button 
+                    id="drive-connect-btn"
+                    onclick="handleGoogleConnect()"
+                    class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-emerald-600 hover:bg-emerald-50 border border-dashed border-emerald-200 transition-all disabled:opacity-50"
+                >
+                    <i data-lucide="cloud" class="w-[18px] h-[18px]"></i>
+                    <span id="drive-btn-text">Connect Google Drive</span>
+                </button>
+            </div>
         </nav>
 
-        <div class="p-4 border-t border-slate-100">
+        <div class="p-4 border-t border-slate-100" id="profile-section">
             <div class="bg-slate-50 rounded-2xl p-4 flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
                     PG
@@ -85,6 +104,29 @@
             </div>
         </div>
     </aside>
+
+    <!-- Drive Modal -->
+    <div id="drive-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="text-xl font-bold text-slate-900">Select File from Drive</h3>
+                <button onclick="document.getElementById('drive-modal').classList.add('hidden'); document.getElementById('drive-modal').classList.remove('flex');" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-2 max-h-[400px] overflow-y-auto" id="drive-file-list">
+                <!-- Files will be injected here -->
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button 
+                    onclick="logout()"
+                    class="text-xs text-rose-600 font-bold hover:underline"
+                >
+                    Disconnect Google Account
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Main Content -->
     <main class="flex-1 lg:ml-64 p-4 md:p-8 lg:p-12 pt-20 lg:pt-12">
@@ -124,8 +166,98 @@
         const INITIAL_PORTFOLIOS = [];
 
         let portfolios = JSON.parse(localStorage.getItem('foliotrack_portfolios')) || INITIAL_PORTFOLIOS;
-
         let strategyMappings = JSON.parse(localStorage.getItem('foliotrack_strategies')) || [];
+
+        let isGoogleAuthenticated = false;
+        let userData = null;
+        let isDriveModalOpen = false;
+        let driveFiles = [];
+        let isDriveLoading = false;
+
+        async function fetchUserData() {
+            try {
+                const response = await fetch('/api/auth/google/user');
+                const data = await response.json();
+                isGoogleAuthenticated = data.isAuthenticated;
+                userData = data.isAuthenticated ? data.user : null;
+                render();
+            } catch (error) {
+                console.error('Error fetching user data:', error);
+            }
+        }
+
+        async function handleGoogleConnect() {
+            if (isGoogleAuthenticated) {
+                fetchDriveFiles();
+                return;
+            }
+            try {
+                const response = await fetch('/api/auth/google/url');
+                const { url } = await response.json();
+                window.open(url, 'google_auth', 'width=600,height=700');
+            } catch (error) {
+                console.error('Error connecting to Google:', error);
+            }
+        }
+
+        async function fetchDriveFiles() {
+            isDriveLoading = true;
+            render();
+            try {
+                const response = await fetch('/api/drive/files');
+                const data = await response.json();
+                if (data.files) {
+                    driveFiles = data.files;
+                    isDriveModalOpen = true;
+                }
+            } catch (error) {
+                console.error('Error fetching drive files:', error);
+            } finally {
+                isDriveLoading = false;
+                render();
+            }
+        }
+
+        async function handleDriveFileSelect(fileId) {
+            isDriveLoading = true;
+            render();
+            try {
+                const response = await fetch(`/api/drive/file/${fileId}`);
+                const data = await response.json();
+                if (data.content) {
+                    Papa.parse(data.content, {
+                        header: false,
+                        skipEmptyLines: true,
+                        complete: (results) => {
+                            processCsvData(results.data);
+                            isDriveModalOpen = false;
+                            render();
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching drive file:', error);
+            } finally {
+                isDriveLoading = false;
+                render();
+            }
+        }
+
+        async function logout() {
+            await fetch('/api/auth/google/logout', { method: 'POST' });
+            isGoogleAuthenticated = false;
+            userData = null;
+            isDriveModalOpen = false;
+            render();
+        }
+
+        window.addEventListener('message', (event) => {
+            if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
+                fetchUserData();
+            }
+        });
+
+        fetchUserData();
 
         const MARKET_DATA = [
           { sector: "Financials - US", tickers: ["XLF.US", "GS.US", "C.US", "BAC.US", "JPM.US", "WFC.US", "BK.US", "WRB.US", "BRK-A.US", "SXLF.LSE", "V.US"] },
@@ -314,6 +446,109 @@
             event.target.value = '';
         }
 
+        function processCsvData(rawData) {
+            if (rawData.length === 0) return;
+
+            const startIdx = (isNaN(parseFloat(rawData[0][2])) && isNaN(parseFloat(rawData[0][3]))) ? 1 : 0;
+            const portfoliosMap = {};
+            
+            // Deduplication signature set
+            const existingSignatures = new Set();
+            portfolios.forEach(p => {
+                p.holdings.forEach(h => {
+                    (h.trades || []).forEach(t => {
+                        existingSignatures.add(`${p.name}|${h.symbol}|${t.shares}|${t.price}|${t.date}`);
+                    });
+                });
+            });
+
+            let newRowsAdded = 0;
+
+            for (let i = startIdx; i < rawData.length; i++) {
+                const row = rawData[i];
+                if (row.length < 2) continue;
+
+                const portfolioName = row[0]?.trim() || 'Imported';
+                const symbol = row[1]?.trim() || 'UNKNOWN';
+                const shares = parseFloat(row[2] || '0');
+                const price = parseFloat(row[3] || '0');
+                const currency = row[4]?.trim() || 'GBP';
+                const fxRate = parseFloat(row[5] || '1');
+                const date = row[6]?.trim() || 'N/A';
+                const strategy = row[12]?.trim() || 'N/A';
+                
+                let adjustedPrice = price;
+                if (currency === 'GBp') adjustedPrice = price / 100;
+                if (currency !== 'GBP' && currency !== 'GBp' || symbol.endsWith('.US')) {
+                    adjustedPrice *= fxRate;
+                }
+                
+                const signature = `${portfolioName}|${symbol}|${shares}|${adjustedPrice}|${date}`;
+                if (existingSignatures.has(signature)) continue;
+
+                newRowsAdded++;
+                const value = shares * adjustedPrice;
+                const trade = { shares, price: adjustedPrice, value, fxRate, currency, date };
+                
+                if (!portfoliosMap[portfolioName]) portfoliosMap[portfolioName] = {};
+                
+                if (portfoliosMap[portfolioName][symbol]) {
+                    const existing = portfoliosMap[portfolioName][symbol];
+                    const totalShares = existing.shares + shares;
+                    const totalValue = existing.value + value;
+                    portfoliosMap[portfolioName][symbol] = {
+                        ...existing,
+                        shares: totalShares,
+                        value: totalValue,
+                        price: totalShares > 0 ? totalValue / totalShares : 0,
+                        trades: [...(existing.trades || []), trade]
+                    };
+                } else {
+                    portfoliosMap[portfolioName][symbol] = {
+                        symbol, name: symbol, shares, price: adjustedPrice, value, change: 0, allocation: 0, strategy, currency,
+                        trades: [trade]
+                    };
+                }
+            }
+
+            if (newRowsAdded === 0) {
+                alert('No new unique trades found.');
+                return;
+            }
+
+            Object.entries(portfoliosMap).forEach(([name, symbolMap], pIdx) => {
+                const existingPortfolio = portfolios.find(p => p.name === name);
+                const newHoldings = Object.values(symbolMap);
+
+                if (existingPortfolio) {
+                    newHoldings.forEach(newH => {
+                        const existingH = existingPortfolio.holdings.find(h => h.symbol === newH.symbol);
+                        if (existingH) {
+                            const totalShares = existingH.shares + newH.shares;
+                            const totalValue = existingH.value + newH.value;
+                            existingH.shares = totalShares;
+                            existingH.value = totalValue;
+                            existingH.price = totalShares > 0 ? totalValue / totalShares : 0;
+                            existingH.trades = [...(existingH.trades || []), ...newH.trades];
+                        } else {
+                            existingPortfolio.holdings.push(newH);
+                        }
+                    });
+                } else {
+                    portfolios.push({
+                        id: `import-${Date.now()}-${pIdx}`,
+                        name,
+                        color: ['#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f43f5e', '#10b981'][portfolios.length % 6],
+                        holdings: newHoldings,
+                        cash: 0
+                    });
+                }
+            });
+
+            savePortfolios();
+            render();
+        }
+
         function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -322,109 +557,7 @@
                 header: false,
                 skipEmptyLines: true,
                 complete: (results) => {
-                    const rawData = results.data;
-                    if (rawData.length === 0) return;
-
-                    const startIdx = (isNaN(parseFloat(rawData[0][2])) && isNaN(parseFloat(rawData[0][3]))) ? 1 : 0;
-                    const portfoliosMap = {};
-                    
-                    // Deduplication signature set
-                    const existingSignatures = new Set();
-                    portfolios.forEach(p => {
-                        p.holdings.forEach(h => {
-                            (h.trades || []).forEach(t => {
-                                existingSignatures.add(`${p.name}|${h.symbol}|${t.shares}|${t.price}|${t.date}`);
-                            });
-                        });
-                    });
-
-                    let newRowsAdded = 0;
-
-                    for (let i = startIdx; i < rawData.length; i++) {
-                        const row = rawData[i];
-                        if (row.length < 2) continue;
-
-                        const portfolioName = row[0]?.trim() || 'Imported';
-                        const symbol = row[1]?.trim() || 'UNKNOWN';
-                        const shares = parseFloat(row[2] || '0');
-                        const price = parseFloat(row[3] || '0');
-                        const currency = row[4]?.trim() || 'GBP';
-                        const fxRate = parseFloat(row[5] || '1');
-                        const date = row[6]?.trim() || 'N/A'; // Column G is index 6
-                        const strategy = row[12]?.trim() || 'N/A';
-                        
-                        let adjustedPrice = price;
-                        if (currency === 'GBp') adjustedPrice = price / 100;
-                        // Convert to GBP if not already in GBP/GBp, or if it's a .US ticker as per user request
-                        if (currency !== 'GBP' && currency !== 'GBp' || symbol.endsWith('.US')) {
-                            adjustedPrice *= fxRate;
-                        }
-                        
-                        const signature = `${portfolioName}|${symbol}|${shares}|${adjustedPrice}|${date}`;
-                        if (existingSignatures.has(signature)) continue;
-
-                        newRowsAdded++;
-                        const value = shares * adjustedPrice;
-                        const trade = { shares, price: adjustedPrice, value, fxRate, currency, date };
-                        
-                        if (!portfoliosMap[portfolioName]) portfoliosMap[portfolioName] = {};
-                        
-                        if (portfoliosMap[portfolioName][symbol]) {
-                            const existing = portfoliosMap[portfolioName][symbol];
-                            const totalShares = existing.shares + shares;
-                            const totalValue = existing.value + value;
-                            portfoliosMap[portfolioName][symbol] = {
-                                ...existing,
-                                shares: totalShares,
-                                value: totalValue,
-                                price: totalShares > 0 ? totalValue / totalShares : 0,
-                                trades: [...(existing.trades || []), trade]
-                            };
-                        } else {
-                            portfoliosMap[portfolioName][symbol] = {
-                                symbol, name: symbol, shares, price: adjustedPrice, value, change: 0, allocation: 0, strategy, currency,
-                                trades: [trade]
-                            };
-                        }
-                    }
-
-                    if (newRowsAdded === 0) {
-                        alert('No new unique trades found in CSV.');
-                        event.target.value = '';
-                        return;
-                    }
-
-                    Object.entries(portfoliosMap).forEach(([name, symbolMap], pIdx) => {
-                        const existingPortfolio = portfolios.find(p => p.name === name);
-                        const newHoldings = Object.values(symbolMap);
-
-                        if (existingPortfolio) {
-                            newHoldings.forEach(newH => {
-                                const existingH = existingPortfolio.holdings.find(h => h.symbol === newH.symbol);
-                                if (existingH) {
-                                    const totalShares = existingH.shares + newH.shares;
-                                    const totalValue = existingH.value + newH.value;
-                                    existingH.shares = totalShares;
-                                    existingH.value = totalValue;
-                                    existingH.price = totalShares > 0 ? totalValue / totalShares : 0;
-                                    existingH.trades = [...(existingH.trades || []), ...newH.trades];
-                                } else {
-                                    existingPortfolio.holdings.push(newH);
-                                }
-                            });
-                        } else {
-                            portfolios.push({
-                                id: `import-${Date.now()}-${pIdx}`,
-                                name,
-                                color: ['#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f43f5e', '#10b981'][portfolios.length % 6],
-                                holdings: newHoldings,
-                                cash: 0
-                            });
-                        }
-                    });
-
-                    savePortfolios();
-                    render();
+                    processCsvData(results.data);
                     event.target.value = '';
                 }
             });
@@ -519,6 +652,72 @@
                     }
                 }
             });
+
+            // Update Drive Button
+            const driveBtnText = document.getElementById('drive-btn-text');
+            const driveBtn = document.getElementById('drive-connect-btn');
+            if (driveBtnText && driveBtn) {
+                driveBtnText.innerText = isDriveLoading ? 'Loading...' : (isGoogleAuthenticated ? 'Import from Drive' : 'Connect Google Drive');
+                driveBtn.disabled = isDriveLoading;
+            }
+
+            // Update Profile Section
+            const profileSection = document.getElementById('profile-section');
+            if (profileSection) {
+                if (userData) {
+                    profileSection.innerHTML = `
+                        <div class="bg-slate-50 rounded-2xl p-4 flex items-center gap-3">
+                            ${userData.picture ? `
+                                <img src="${userData.picture}" alt="${userData.name}" class="w-10 h-10 rounded-full border border-slate-200" referrerPolicy="no-referrer">
+                            ` : `
+                                <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+                                    ${userData.name.charAt(0)}
+                                </div>
+                            `}
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold truncate">${userData.name}</p>
+                                <p class="text-[10px] text-slate-500 truncate">${userData.email}</p>
+                            </div>
+                            <button onclick="logout()" class="text-slate-400 hover:text-rose-500 transition-colors">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    profileSection.innerHTML = `
+                        <button onclick="handleGoogleConnect()" class="w-full bg-slate-900 text-white rounded-2xl p-4 flex items-center justify-center gap-3 hover:bg-slate-800 transition-all font-bold text-sm shadow-lg shadow-slate-200">
+                            <i data-lucide="globe" class="w-4 h-4"></i>
+                            Login with Google
+                        </button>
+                    `;
+                }
+            }
+
+            // Update Drive Modal
+            const modal = document.getElementById('drive-modal');
+            const fileList = document.getElementById('drive-file-list');
+            if (modal && fileList) {
+                if (isDriveModalOpen) {
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    fileList.innerHTML = driveFiles.length === 0 ? `
+                        <div class="p-8 text-center text-slate-500 italic">No CSV files found in your Google Drive.</div>
+                    ` : driveFiles.map(file => `
+                        <button onclick="handleDriveFileSelect('${file.id}')" class="w-full flex items-center gap-3 p-4 rounded-2xl hover:bg-slate-50 transition-colors text-left group">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-100 transition-colors">
+                                <i data-lucide="cloud" class="w-5 h-5"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold text-slate-900 truncate">${file.name}</p>
+                                <p class="text-xs text-slate-500">${file.mimeType.includes('spreadsheet') ? 'Google Sheet' : 'CSV File'}</p>
+                            </div>
+                        </button>
+                    `).join('');
+                } else {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                }
+            }
         }
 
         function renderHeader() {
@@ -578,31 +777,59 @@
             const topHoldings = allHoldings.sort((a, b) => b.displayValue - a.displayValue).slice(0, 5);
 
             container.innerHTML = `
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-                    <div>
-                        <h2 class="text-3xl font-bold text-slate-900">Portfolio Overview</h2>
-                        <p class="text-slate-500 text-sm mt-1">Summary of your total wealth and asset allocation</p>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    <div class="lg:col-span-2 bg-indigo-600 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-100">
+                        <div class="relative z-10">
+                            <h2 class="text-3xl font-bold mb-2">
+                                ${userData ? `Welcome back, ${userData.name.split(' ')[0]}!` : 'Welcome to FolioTrack'}
+                            </h2>
+                            <p class="text-indigo-100 mb-6 max-w-md">
+                                ${userData 
+                                    ? 'Your portfolios are synced and ready. Track your performance across all assets in real-time.' 
+                                    : 'Connect your Google account to sync your trades directly from Google Drive and keep your data secure.'}
+                            </p>
+                            <div class="flex flex-wrap gap-4">
+                                ${!userData ? `
+                                    <button 
+                                        onclick="handleGoogleConnect()"
+                                        class="bg-white text-indigo-600 px-6 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-all flex items-center gap-2 shadow-lg"
+                                    >
+                                        <i data-lucide="globe" class="w-5 h-5"></i>
+                                        Connect Google Account
+                                    </button>
+                                ` : ''}
+                                <button 
+                                    onclick="document.getElementById('csv-input').click()"
+                                    class="px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2 ${userData ? 'bg-white text-indigo-600 hover:bg-indigo-50' : 'bg-indigo-500 text-white hover:bg-indigo-400 border border-indigo-400'}"
+                                >
+                                    <i data-lucide="upload" class="w-5 h-5"></i>
+                                    Upload CSV
+                                </button>
+                            </div>
+                        </div>
+                        <div class="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
+                        <div class="absolute bottom-0 left-0 w-32 h-32 bg-indigo-400/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl"></div>
                     </div>
-                    <div class="flex flex-wrap gap-3">
-                        <div class="flex flex-col gap-2">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900 mb-2">Valuation Method</h3>
+                            <p class="text-slate-500 text-sm mb-6">Switch between real-time market prices and your end-of-day purchase prices for portfolio valuation.</p>
+                        </div>
+                        <div class="space-y-3">
                             <button 
                                 onclick="toggleLivePrice()"
-                                class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold transition-all shadow-lg ${useLivePrice ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-white text-slate-600 border border-slate-200 shadow-slate-100'}"
+                                class="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all border ${useLivePrice ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-slate-50 text-slate-600 border-slate-100'}"
                             >
-                                <i data-lucide="zap" class="w-4 h-4 ${useLivePrice ? 'fill-white' : ''}"></i>
-                                ${useLivePrice ? 'Live Prices Active' : 'Use EOD Prices'}
+                                <i data-lucide="${useLivePrice ? 'zap' : 'clock'}" class="w-5 h-5"></i>
+                                ${useLivePrice ? 'Using Live Prices' : 'Using EOD Prices'}
                             </button>
                             ${!useLivePrice ? `
                                 <div class="flex bg-slate-100 p-1 rounded-xl">
-                                    <button onclick="setEodSource('csv')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">CSV</button>
-                                    <button onclick="setEodSource('google')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">Google</button>
+                                    <button onclick="setEodSource('csv')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all ${eodSource === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">CSV Purchase Price</button>
+                                    <button onclick="setEodSource('google')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">Google Last Close</button>
                                 </div>
                             ` : ''}
                         </div>
-                        <button onclick="document.getElementById('csv-input').click()" class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 h-fit">
-                            <i data-lucide="upload" class="w-4 h-4"></i>
-                            Import CSV
-                        </button>
                     </div>
                 </div>
 
