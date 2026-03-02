@@ -495,7 +495,7 @@
                 const portfolioName = row[0]?.trim() || 'Imported';
                 const symbol = row[1]?.trim() || 'UNKNOWN';
                 const shares = parseFloat(row[2] || '0');
-                const price = parseFloat(row[3] || '0');
+                const price = parseFloat(row[14] || '0');
                 const currency = row[4]?.trim() || 'GBP';
                 const fxRate = parseFloat(row[5] || '1');
                 const date = row[6]?.trim() || 'N/A';
