@@ -355,8 +355,8 @@
                         
                         let adjustedPrice = price;
                         if (currency === 'GBp') adjustedPrice = price / 100;
-                        // Convert to GBP if not already in GBP/GBp
-                        if (currency !== 'GBP' && currency !== 'GBp') {
+                        // Convert to GBP if not already in GBP/GBp, or if it's a .US ticker as per user request
+                        if (currency !== 'GBP' && currency !== 'GBp' || symbol.endsWith('.US')) {
                             adjustedPrice *= fxRate;
                         }
                         
@@ -837,7 +837,12 @@
                     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                         <div class="flex flex-col sm:flex-row sm:items-center gap-6">
                             <div>
-                                <h2 class="text-3xl font-bold text-slate-900">${p.name}</h2>
+                                <div class="flex items-center gap-3">
+                                    <h2 class="text-3xl font-bold text-slate-900">${p.name}</h2>
+                                    <span class="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-[10px] font-bold uppercase tracking-wider">
+                                        Base: GBP
+                                    </span>
+                                </div>
                                 <div class="flex items-center gap-4 mt-1">
                                     <p class="text-slate-500 text-sm">Managing ${p.holdings.length} assets</p>
                                 </div>
@@ -879,6 +884,7 @@
                                             <div class="flex items-center">Asset ${sortIcon('symbol')}</div>
                                         </th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Strategy</th>
+                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Currency</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">CSV Price</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Google EOD</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Current Price</th>
@@ -910,6 +916,7 @@
                                                 Liquidity
                                             </span>
                                         </td>
+                                        <td class="px-6 py-4 text-sm font-medium text-slate-600">GBP</td>
                                         <td class="px-6 py-4 text-sm font-medium text-slate-400">N/A</td>
                                         <td class="px-6 py-4 text-sm text-slate-400">N/A</td>
                                         <td class="px-6 py-4 text-sm text-slate-400">N/A</td>
@@ -970,15 +977,17 @@
                                                 <td class="px-6 py-4 text-sm text-slate-600">
                                                     <span class="px-2 py-1 bg-slate-100 rounded-md text-[10px] font-bold uppercase tracking-wider">${h.strategy || 'N/A'}</span>
                                                 </td>
+                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">${h.currency || 'GBP'}</td>
                                                 <td class="px-6 py-4 text-sm font-medium text-slate-700">${formatCurrency(h.price, 2)}</td>
                                                 <td class="px-6 py-4 text-sm font-medium text-slate-600">
-                                                    ${h.googleEodPrice ? formatCurrency(h.googleEodPrice) : '<span class="text-slate-300">N/A</span>'}
+                                                    ${h.googleEodPrice ? formatCurrency(h.googleEodPrice, 2) : '<span class="text-slate-300">N/A</span>'}
                                                 </td>
                                                 <td class="px-6 py-4 text-sm font-medium text-indigo-600">
                                                     <div class="relative group" onclick="event.stopPropagation()">
                                                         <input 
                                                             type="number" 
-                                                            value="${h.currentPrice}" 
+                                                            step="0.01"
+                                                            value="${parseFloat(h.currentPrice).toFixed(2)}" 
                                                             onchange="updatePrice('${p.id}', '${h.symbol}', this.value)"
                                                             class="w-24 bg-transparent border-b border-dashed border-indigo-300 focus:border-indigo-600 focus:outline-none font-bold text-indigo-600 transition-colors py-1"
                                                         />
