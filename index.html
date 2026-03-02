@@ -169,6 +169,7 @@
         let strategyMappings = JSON.parse(localStorage.getItem('foliotrack_strategies')) || [];
 
         let isGoogleAuthenticated = false;
+        let isDemoMode = false;
         let userData = null;
         let isDriveModalOpen = false;
         let driveFiles = [];
@@ -179,6 +180,7 @@
                 const response = await fetch('/api/auth/google/user');
                 const data = await response.json();
                 isGoogleAuthenticated = data.isAuthenticated;
+                isDemoMode = !!data.isDemo;
                 userData = data.isAuthenticated ? data.user : null;
                 render();
             } catch (error) {
@@ -202,12 +204,15 @@
 
             try {
                 const response = await fetch('/api/auth/google/url');
-                const { url } = await response.json();
-                authWindow.location.href = url;
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to get auth URL');
+                }
+                authWindow.location.href = data.url;
             } catch (error) {
                 console.error('Error connecting to Google:', error);
                 authWindow.close();
-                alert('Failed to initiate Google connection. Please try again.');
+                alert(`Failed to initiate Google connection: ${error.message}. Please check your server configuration.`);
             }
         }
 
@@ -685,7 +690,10 @@
             if (profileSection) {
                 if (userData) {
                     profileSection.innerHTML = `
-                        <div class="bg-slate-50 rounded-2xl p-4 flex items-center gap-3">
+                        <div class="bg-slate-50 rounded-2xl p-4 flex items-center gap-3 relative">
+                            ${isDemoMode ? `
+                                <div class="absolute -top-2 -right-2 bg-amber-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">DEMO</div>
+                            ` : ''}
                             ${userData.picture ? `
                                 <img src="${userData.picture}" alt="${userData.name}" class="w-10 h-10 rounded-full border border-slate-200" referrerPolicy="no-referrer">
                             ` : `
@@ -695,7 +703,7 @@
                             `}
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-bold truncate">${userData.name}</p>
-                                <p class="text-[10px] text-slate-500 truncate">${userData.email}</p>
+                                <p class="text-[10px] text-slate-500 truncate">${isDemoMode ? 'Demo Account' : userData.email}</p>
                             </div>
                             <button onclick="logout()" class="text-slate-400 hover:text-rose-500 transition-colors">
                                 <i data-lucide="x" class="w-3.5 h-3.5"></i>
@@ -801,10 +809,13 @@
                         <div class="relative z-10">
                             <h2 class="text-3xl font-bold mb-2">
                                 ${userData ? `Welcome back, ${userData.name.split(' ')[0]}!` : 'Welcome to FolioTrack'}
+                                ${isDemoMode ? '<span class="text-xs bg-amber-400/30 text-white px-2 py-1 rounded-lg ml-2 align-middle">DEMO MODE</span>' : ''}
                             </h2>
                             <p class="text-indigo-100 mb-6 max-w-md">
                                 ${userData 
-                                    ? 'Your portfolios are synced and ready. Track your performance across all assets in real-time.' 
+                                    ? (isDemoMode 
+                                        ? 'You are currently in Demo Mode. Real Google credentials are not configured, so we are using sample data for testing.' 
+                                        : 'Your portfolios are synced and ready. Track your performance across all assets in real-time.')
                                     : 'Connect your Google account to sync your trades directly from Google Drive and keep your data secure.'}
                             </p>
                             <div class="flex flex-wrap gap-4">
