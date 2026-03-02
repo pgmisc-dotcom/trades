@@ -13,17 +13,44 @@
         body { font-family: 'Inter', sans-serif; }
         [xl-cloak] { display: none !important; }
         .chart-container { position: relative; height: 300px; width: 100%; }
+        
+        @media (max-width: 1024px) {
+            .sidebar-open aside { transform: translateX(0); }
+            aside { transform: translateX(-100%); transition: transform 0.3s ease; }
+            main { margin-left: 0 !important; }
+        }
     </style>
 </head>
 <body class="bg-[#F8FAFC] text-slate-900 min-h-screen flex">
 
-    <!-- Sidebar -->
-    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col fixed h-full z-10">
-        <div class="p-6 flex items-center gap-3">
-            <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
-                <i data-lucide="pie-chart" class="text-white"></i>
+    <!-- Mobile Header -->
+    <div class="lg:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-20 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+                <i data-lucide="pie-chart" class="text-white w-5 h-5"></i>
             </div>
-            <h1 class="text-xl font-bold tracking-tight">FolioTrack</h1>
+            <h1 class="text-lg font-bold tracking-tight">FolioTrack</h1>
+        </div>
+        <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-50 rounded-lg text-slate-600">
+            <i data-lucide="menu" class="w-6 h-6"></i>
+        </button>
+    </div>
+
+    <!-- Sidebar Overlay -->
+    <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-900/50 z-10 hidden lg:hidden"></div>
+
+    <!-- Sidebar -->
+    <aside id="main-sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col fixed h-full z-20">
+        <div class="p-6 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+                    <i data-lucide="pie-chart" class="text-white"></i>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight">FolioTrack</h1>
+            </div>
+            <button onclick="toggleSidebar()" class="lg:hidden p-2 hover:bg-slate-50 rounded-lg text-slate-400">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
         </div>
 
         <nav class="flex-1 px-4 py-4 space-y-1 overflow-y-auto" id="sidebar-nav">
@@ -60,18 +87,18 @@
     </aside>
 
     <!-- Main Content -->
-    <main class="flex-1 ml-64 p-8 lg:p-12">
-        <header class="flex items-center justify-between mb-10">
+    <main class="flex-1 lg:ml-64 p-4 md:p-8 lg:p-12 pt-20 lg:pt-12">
+        <header class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
             <div>
                 <h2 class="text-sm font-bold text-indigo-600 uppercase tracking-widest mb-1" id="header-subtitle">Dashboard</h2>
                 <h3 class="text-2xl font-bold text-slate-900" id="header-title">Financial Overview</h3>
             </div>
-            <div class="flex items-center gap-4">
-                <div class="relative">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                <div class="relative flex-1">
                     <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size="18"></i>
-                    <input type="text" placeholder="Search assets..." class="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all w-64">
+                    <input type="text" placeholder="Search assets..." class="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all w-full md:w-64">
                 </div>
-                <button class="bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors">
+                <button class="bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors whitespace-nowrap">
                     Export Report
                 </button>
             </div>
@@ -89,6 +116,7 @@
         // --- State ---
         let activeTab = 'summary';
         let useLivePrice = JSON.parse(localStorage.getItem('foliotrack_use_live_price')) || false;
+        let eodSource = localStorage.getItem('foliotrack_eod_source') || 'csv';
         let sortConfig = { key: 'symbol', direction: 'asc' };
         let chartInstance = null;
         let sectorChartInstance = null;
@@ -96,12 +124,6 @@
         const INITIAL_PORTFOLIOS = [];
 
         let portfolios = JSON.parse(localStorage.getItem('foliotrack_portfolios')) || INITIAL_PORTFOLIOS;
-
-        // One-time cleanup: if the user has the old default portfolios, clear them
-        if (portfolios.length > 0 && portfolios.some(p => ['Growth Tech', 'Dividend Yield', 'Crypto & Web3'].includes(p.name))) {
-            localStorage.removeItem('foliotrack_portfolios');
-            portfolios = [];
-        }
 
         let strategyMappings = JSON.parse(localStorage.getItem('foliotrack_strategies')) || [];
 
@@ -165,6 +187,19 @@
             render();
         }
 
+        function toggleEodSource() {
+            eodSource = eodSource === 'csv' ? 'google' : 'google'; // Wait, should be toggle
+            eodSource = eodSource === 'csv' ? 'google' : 'csv';
+            localStorage.setItem('foliotrack_eod_source', eodSource);
+            render();
+        }
+
+        function setEodSource(source) {
+            eodSource = source;
+            localStorage.setItem('foliotrack_eod_source', eodSource);
+            render();
+        }
+
         function updatePrice(portfolioId, symbol, price) {
             portfolios = portfolios.map(p => {
                 if (p.id === portfolioId) {
@@ -209,7 +244,16 @@
         // --- Core Logic ---
         function switchTab(tabId) {
             activeTab = tabId;
+            if (window.innerWidth < 1024) {
+                toggleSidebar();
+            }
             render();
+        }
+
+        function toggleSidebar() {
+            document.body.classList.toggle('sidebar-open');
+            const overlay = document.getElementById('sidebar-overlay');
+            overlay.classList.toggle('hidden');
         }
 
         function handleStrategyFileUpload(event) {
@@ -423,11 +467,6 @@
             }
         }
 
-        function toggleLivePrice() {
-            useLivePrice = !useLivePrice;
-            render();
-        }
-
         function handleSort(key) {
             if (sortConfig.key === key) {
                 sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
@@ -516,50 +555,58 @@
 
             const totalValue = portfolios.reduce((acc, p) => {
                 const holdingsValue = p.holdings.reduce((hAcc, h) => {
-                    const val = useLivePrice ? (h.shares * (h.currentPrice || h.price * 1.05)) : h.value;
+                    let val;
+                    if (useLivePrice) {
+                        val = h.shares * (h.currentPrice || h.price);
+                    } else {
+                        val = eodSource === 'google' ? (h.shares * (h.googleEodPrice || h.price)) : h.value;
+                    }
                     return hAcc + val;
                 }, 0);
                 return acc + holdingsValue + (p.cash || 0);
             }, 0);
 
-            const allHoldings = portfolios.flatMap(p => p.holdings.map(h => ({
-                ...h,
-                displayValue: useLivePrice ? (h.shares * (h.currentPrice || h.price * 1.05)) : h.value
-            })));
+            const allHoldings = portfolios.flatMap(p => p.holdings.map(h => {
+                let displayValue;
+                if (useLivePrice) {
+                    displayValue = h.shares * (h.currentPrice || h.price);
+                } else {
+                    displayValue = eodSource === 'google' ? (h.shares * (h.googleEodPrice || h.price)) : h.value;
+                }
+                return { ...h, displayValue };
+            }));
             const topHoldings = allHoldings.sort((a, b) => b.displayValue - a.displayValue).slice(0, 5);
 
             container.innerHTML = `
-                <div class="flex items-center justify-between mb-8">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                     <div>
                         <h2 class="text-3xl font-bold text-slate-900">Portfolio Overview</h2>
                         <p class="text-slate-500 text-sm mt-1">Summary of your total wealth and asset allocation</p>
                     </div>
-                    <div class="flex gap-3">
-                        <button 
-                            onclick="toggleLivePrice()"
-                            class="flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all shadow-lg ${useLivePrice ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-white text-slate-600 border border-slate-200 shadow-slate-100'}"
-                        >
-                            <i data-lucide="zap" class="w-4 h-4 ${useLivePrice ? 'fill-white' : ''}"></i>
-                            ${useLivePrice ? 'Live Prices Active' : 'Use EOD Prices'}
-                        </button>
-                        <button onclick="document.getElementById('csv-input').click()" class="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
+                    <div class="flex flex-wrap gap-3">
+                        <div class="flex flex-col gap-2">
+                            <button 
+                                onclick="toggleLivePrice()"
+                                class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold transition-all shadow-lg ${useLivePrice ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-white text-slate-600 border border-slate-200 shadow-slate-100'}"
+                            >
+                                <i data-lucide="zap" class="w-4 h-4 ${useLivePrice ? 'fill-white' : ''}"></i>
+                                ${useLivePrice ? 'Live Prices Active' : 'Use EOD Prices'}
+                            </button>
+                            ${!useLivePrice ? `
+                                <div class="flex bg-slate-100 p-1 rounded-xl">
+                                    <button onclick="setEodSource('csv')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">CSV</button>
+                                    <button onclick="setEodSource('google')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">Google</button>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <button onclick="document.getElementById('csv-input').click()" class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 h-fit">
                             <i data-lucide="upload" class="w-4 h-4"></i>
                             Import CSV
                         </button>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-2">
-                        <div class="flex items-center justify-between">
-                            <div class="p-2 rounded-lg bg-indigo-600"><i data-lucide="wallet" class="text-white w-5 h-5"></i></div>
-                            <div class="flex items-center text-sm font-medium text-emerald-600"><i data-lucide="arrow-up-right" class="w-4 h-4"></i>2.4%</div>
-                        </div>
-                        <div class="mt-2">
-                            <p class="text-slate-500 text-sm font-medium">Total Net Worth</p>
-                            <h3 class="text-2xl font-bold text-slate-900">${formatCurrency(totalValue)}</h3>
-                        </div>
-                    </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
                     <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-2">
                         <div class="flex items-center justify-between">
                             <div class="p-2 rounded-lg bg-emerald-600"><i data-lucide="trending-up" class="text-white w-5 h-5"></i></div>
@@ -731,7 +778,7 @@
 
             // Calculate values and PnL
             const processedHoldings = p.holdings.map(h => {
-                const currentPrice = h.currentPrice || h.price * 1.05;
+                const currentPrice = h.currentPrice || h.price;
                 const costBasis = h.value; // Original value from trades
                 const marketValue = h.shares * currentPrice;
                 const pnlValue = marketValue - costBasis;
@@ -762,7 +809,15 @@
                 return 0;
             });
 
-            const holdingsValue = processedHoldings.reduce((acc, h) => acc + (useLivePrice ? h.marketValue : h.value), 0);
+            const holdingsValue = processedHoldings.reduce((acc, h) => {
+                let val;
+                if (useLivePrice) {
+                    val = h.marketValue;
+                } else {
+                    val = eodSource === 'google' ? (h.shares * (h.googleEodPrice || h.price)) : h.value;
+                }
+                return acc + val;
+            }, 0);
             const totalValue = holdingsValue + (p.cash || 0);
             
             const allDates = p.holdings.flatMap(h => (h.trades || []).map(t => t.date)).filter(d => d && d !== 'N/A');
@@ -779,26 +834,32 @@
 
             container.innerHTML = `
                 <div class="space-y-8">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-6">
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center gap-6">
                             <div>
                                 <h2 class="text-3xl font-bold text-slate-900">${p.name}</h2>
                                 <div class="flex items-center gap-4 mt-1">
                                     <p class="text-slate-500 text-sm">Managing ${p.holdings.length} assets</p>
                                 </div>
                             </div>
-                            <div class="h-10 w-px bg-slate-200"></div>
+                            <div class="hidden sm:block h-10 w-px bg-slate-200"></div>
                             <div class="flex items-center gap-3 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
-                                <button onclick="toggleLivePrice()" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${!useLivePrice ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}">
+                                <button onclick="toggleLivePrice()" class="flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${!useLivePrice ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}">
                                     EOD Price
                                 </button>
-                                <button onclick="toggleLivePrice()" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${useLivePrice ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}">
+                                <button onclick="toggleLivePrice()" class="flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${useLivePrice ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}">
                                     Live Price
                                 </button>
                             </div>
+                            ${!useLivePrice ? `
+                                <div class="flex bg-slate-100 p-1 rounded-xl">
+                                    <button onclick="setEodSource('csv')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">CSV</button>
+                                    <button onclick="setEodSource('google')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">Google</button>
+                                </div>
+                            ` : ''}
                         </div>
-                        <div class="text-right flex flex-col items-end gap-2">
-                            <div>
+                        <div class="flex flex-row items-center justify-between lg:flex-col lg:items-end gap-2">
+                            <div class="lg:text-right">
                                 <p class="text-sm text-slate-500 font-medium">Total Portfolio Value (${useLivePrice ? 'Live' : 'EOD'})</p>
                                 <p class="text-3xl font-bold text-slate-900">${formatCurrency(totalValue)}</p>
                             </div>
@@ -818,7 +879,8 @@
                                             <div class="flex items-center">Asset ${sortIcon('symbol')}</div>
                                         </th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Strategy</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">EOD Price</th>
+                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">CSV Price</th>
+                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Google EOD</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Current Price</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">PnL £</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">PnL %</th>
@@ -874,7 +936,12 @@
                                     </tr>
                                     ${processedHoldings.map((h, idx) => {
                                         const isExpanded = expandedAsset === h.symbol;
-                                        const displayValue = useLivePrice ? h.marketValue : h.value;
+                                        let displayValue;
+                                        if (useLivePrice) {
+                                            displayValue = h.marketValue;
+                                        } else {
+                                            displayValue = eodSource === 'google' ? (h.shares * (h.googleEodPrice || h.price)) : h.value;
+                                        }
                                         const allocation = totalValue > 0 ? Math.round((displayValue / totalValue) * 100) : 0;
                                         
                                         const holdingDates = (h.trades || []).map(t => t.date).filter(d => d && d !== 'N/A');
@@ -904,6 +971,9 @@
                                                     <span class="px-2 py-1 bg-slate-100 rounded-md text-[10px] font-bold uppercase tracking-wider">${h.strategy || 'N/A'}</span>
                                                 </td>
                                                 <td class="px-6 py-4 text-sm font-medium text-slate-700">${formatCurrency(h.price, 2)}</td>
+                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">
+                                                    ${h.googleEodPrice ? formatCurrency(h.googleEodPrice) : '<span class="text-slate-300">N/A</span>'}
+                                                </td>
                                                 <td class="px-6 py-4 text-sm font-medium text-indigo-600">
                                                     <div class="relative group" onclick="event.stopPropagation()">
                                                         <input 
@@ -916,7 +986,9 @@
                                                 </td>
                                                 <td class="px-6 py-4 text-sm font-bold ${pnlColor}">${formatCurrency(h.pnlValue)}</td>
                                                 <td class="px-6 py-4 text-sm font-bold ${pnlColor}">${formatPercent(h.pnlPercent)}</td>
-                                                <td class="px-6 py-4 text-sm font-bold text-slate-900">${formatCurrency(displayValue)}</td>
+                                                <td class="px-6 py-4 text-sm font-bold text-slate-900">
+                                                    ${formatCurrency(displayValue)}
+                                                </td>
                                                 <td class="px-6 py-4">
                                                     <div class="flex items-center gap-2">
                                                         <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
