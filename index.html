@@ -175,24 +175,42 @@
         let driveFiles = [];
         let isDriveLoading = false;
 
+        // Helper for robust number parsing
+        function parseNumber(val, defaultVal = 0) {
+            if (val === undefined || val === null || val === '') return defaultVal;
+            // Remove currency symbols, commas, etc.
+            const cleaned = String(val).replace(/[^0-9.-]/g, '');
+            const num = parseFloat(cleaned);
+            return isNaN(num) ? defaultVal : num;
+        }
+
         // Helper for safe JSON fetching
         async function fetchJson(url, options = {}) {
             try {
                 const response = await fetch(url, options);
                 const contentType = response.headers.get('content-type');
                 
+                let data;
+                const text = await response.text();
+                
                 if (contentType && contentType.includes('application/json')) {
-                    const data = await response.json();
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('Failed to parse JSON even though content-type was application/json:', text);
+                        throw new Error('Invalid JSON response from server.');
+                    }
+                    
                     if (!response.ok) {
                         throw new Error(data.error || `Server error: ${response.status}`);
                     }
                     return data;
                 } else {
-                    const text = await response.text();
                     if (!response.ok) {
-                        throw new Error(`Server error ${response.status}: ${text.slice(0, 50)}...`);
+                        throw new Error(`Server error ${response.status}: ${text.slice(0, 100)}...`);
                     }
-                    throw new Error('Expected JSON response but received HTML/Text. Check server routes.');
+                    // If it's 200 OK but not JSON, it's likely the SPA fallback
+                    throw new Error('Received HTML instead of JSON. This usually means the API route is missing or the server is restarting.');
                 }
             } catch (error) {
                 console.error(`Fetch error for ${url}:`, error);
@@ -517,17 +535,23 @@
 
                 const portfolioName = row[0]?.trim() || 'Imported';
                 const symbol = row[1]?.trim() || 'UNKNOWN';
-                const shares = parseFloat(row[2] || '0');
-                const price = parseFloat(row[14] || '0'); // Using Column O (index 14) as requested
+                const shares = parseNumber(row[2]);
+                const price = parseNumber(row[14]); // Using Column O (index 14) as requested
                 const currency = row[4]?.trim() || 'GBP';
-                const fxRate = parseFloat(row[5] || '1');
+                const fxRate = parseNumber(row[5] || row[15], 1); // Try Column F or Column P, default to 1
                 const date = row[6]?.trim() || 'N/A';
                 const strategy = row[12]?.trim() || 'N/A';
                 
                 let adjustedPrice = price;
                 if (currency === 'GBp') adjustedPrice = price / 100;
-                if (currency !== 'GBP' && currency !== 'GBp' || symbol.endsWith('.US')) {
-                    adjustedPrice *= fxRate;
+                
+                // Convert to GBP using FX rate from spreadsheet
+                // Standard convention is Local/Base (e.g. 1.25 USD per 1 GBP)
+                // So we divide by the FX rate to get back to pounds
+                if (currency !== 'GBP' && currency !== 'GBp' || symbol.toUpperCase().endsWith('.US')) {
+                    if (fxRate && fxRate !== 0) {
+                        adjustedPrice = adjustedPrice / fxRate;
+                    }
                 }
                 
                 const signature = `${portfolioName}|${symbol}|${shares}|${adjustedPrice}|${date}`;
@@ -548,11 +572,12 @@
                         shares: totalShares,
                         value: totalValue,
                         price: totalShares > 0 ? totalValue / totalShares : 0,
+                        fxRate: fxRate, // Store the latest FX rate
                         trades: [...(existing.trades || []), trade]
                     };
                 } else {
                     portfoliosMap[portfolioName][symbol] = {
-                        symbol, name: symbol, shares, price: adjustedPrice, value, change: 0, allocation: 0, strategy, currency,
+                        symbol, name: symbol, shares, price: adjustedPrice, value, change: 0, allocation: 0, strategy, currency, fxRate,
                         trades: [trade]
                     };
                 }
