@@ -156,6 +156,35 @@
     <input type="file" id="strategy-csv-input" accept=".csv,.xlsx,.xls" class="hidden" onchange="handleStrategyFileUpload(event)">
 
     <script>
+        const TICKER_NAMES = {
+            'AMZN.US': 'Amazon.com, Inc.',
+            'AAPL.US': 'Apple Inc.',
+            'GOOG.US': 'Alphabet Inc.',
+            'TSLA.US': 'Tesla, Inc.',
+            'MSFT.US': 'Microsoft Corporation',
+            'NVDA.US': 'NVIDIA Corporation',
+            'META.US': 'Meta Platforms, Inc.',
+            'V.US': 'Visa Inc.',
+            'JPM.US': 'JPMorgan Chase & Co.',
+            'GS.US': 'The Goldman Sachs Group, Inc.',
+            'HSBA.LSE': 'HSBC Holdings plc',
+            'BARC.LSE': 'Barclays PLC',
+            'LLOY.LSE': 'Lloyds Banking Group plc',
+            'BP.LSE': 'BP p.l.c.',
+            'AZN.LSE': 'AstraZeneca PLC',
+            'GSK.LSE': 'GSK plc',
+            'SHEL.LSE': 'Shell plc',
+            'ULVR.LSE': 'Unilever PLC',
+            'RIO.LSE': 'Rio Tinto Group',
+            'GLEN.LSE': 'Glencore plc',
+            'AMZN': 'Amazon.com, Inc.',
+            'AAPL': 'Apple Inc.',
+            'GOOG': 'Alphabet Inc.',
+            'TSLA': 'Tesla, Inc.',
+            'MSFT': 'Microsoft Corporation',
+            'NVDA': 'NVIDIA Corporation'
+        };
+
         // --- State ---
         let activeTab = 'summary';
         let useLivePrice = JSON.parse(localStorage.getItem('foliotrack_use_live_price')) || false;
@@ -568,11 +597,16 @@
                 const date = row[6]?.trim() || 'N/A';
                 const strategy = row[12]?.trim() || 'N/A';
                 
+                const longName = TICKER_NAMES[symbol.toUpperCase()] || symbol;
+                
                 let adjustedPrice = price;
                 if (currency === 'GBp') adjustedPrice = price / 100;
                 
                 // Use marketFxRate (Column Q) to determine a US stock's value as requested
-                if (currency !== 'GBP' && currency !== 'GBp' || symbol.toUpperCase().endsWith('.US')) {
+                const isUS = symbol.toUpperCase().endsWith('.US');
+                const isLSE = symbol.toUpperCase().endsWith('.LSE');
+                
+                if (isUS || (currency !== 'GBP' && currency !== 'GBp')) {
                     if (marketFxRate && marketFxRate !== 0) {
                         adjustedPrice = adjustedPrice / marketFxRate;
                     }
@@ -603,7 +637,7 @@
                     };
                 } else {
                     portfoliosMap[portfolioName][symbol] = {
-                        symbol, name: symbol, shares, price: adjustedPrice, value, change: 0, allocation: 0, strategy, currency, fxRate: bookFxRate, bookFxRate, marketFxRate,
+                        symbol, name: longName, shares, price: adjustedPrice, value, change: 0, allocation: 0, strategy, currency, fxRate: bookFxRate, bookFxRate, marketFxRate,
                         trades: [trade]
                     };
                 }
@@ -1395,7 +1429,7 @@
                                                         <div>
                                                             <p class="font-bold text-slate-900">${h.symbol}</p>
                                                             <div class="flex flex-col">
-                                                                <p class="text-xs text-slate-500">${h.name || h.symbol}</p>
+                                                                <p class="text-xs text-slate-500">${TICKER_NAMES[h.symbol.toUpperCase()] || h.name || h.symbol}</p>
                                                                 <p class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
                                                                     <i data-lucide="calendar" class="w-2.5 h-2.5"></i> First: ${holdingEarliestDate}
                                                                 </p>
@@ -1418,8 +1452,12 @@
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">${h.bookFxRate ? h.bookFxRate.toFixed(4) : '1.0000'}</td>
-                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">${h.marketFxRate ? h.marketFxRate.toFixed(4) : '1.0000'}</td>
+                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">
+                                                     ${h.symbol.toUpperCase().endsWith('.LSE') ? 'N/A' : (h.bookFxRate ? h.bookFxRate.toFixed(4) : '1.0000')}
+                                                 </td>
+                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">
+                                                     ${h.symbol.toUpperCase().endsWith('.LSE') ? 'N/A' : (h.marketFxRate ? h.marketFxRate.toFixed(4) : '1.0000')}
+                                                 </td>
                                                 <td class="px-6 py-4 text-sm font-bold ${pnlColor}">${formatCurrency(h.pnlValue)}</td>
                                                 <td class="px-6 py-4 text-sm font-bold ${pnlColor}">${formatPercent(h.pnlPercent)}</td>
                                                 <td class="px-6 py-4 text-sm font-bold text-slate-900">
@@ -1458,13 +1496,14 @@
                                                                         <div class="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
                                                                         <span class="text-slate-500">Trade #${tIdx + 1}</span>
                                                                         <span class="text-[10px] text-slate-400 ml-2">(${t.currency})</span>
+                                                                         <span class="text-[10px] text-indigo-400 ml-2 italic">${TICKER_NAMES[h.symbol.toUpperCase()] || h.name || h.symbol}</span>
                                                                     </div>
                                                                     <div class="flex gap-8 font-medium">
                                                                         <span class="w-24 text-right text-slate-500 text-xs">${t.date || 'N/A'}</span>
                                                                         <span class="w-24 text-right text-slate-600">${t.shares}</span>
                                                                         <span class="w-24 text-right text-slate-600">${formatCurrency(t.price)}</span>
-                                                                        <span class="w-24 text-right text-slate-600 text-[10px]">${t.bookFxRate ? t.bookFxRate.toFixed(4) : '1.0000'}</span>
-                                                                        <span class="w-24 text-right text-slate-600 text-[10px]">${t.marketFxRate ? t.marketFxRate.toFixed(4) : '1.0000'}</span>
+                                                                        <span class="w-24 text-right text-slate-600 text-[10px]">${h.symbol.toUpperCase().endsWith('.LSE') ? 'N/A' : (t.bookFxRate ? t.bookFxRate.toFixed(4) : '1.0000')}</span>
+                                                                        <span class="w-24 text-right text-slate-600 text-[10px]">${h.symbol.toUpperCase().endsWith('.LSE') ? 'N/A' : (t.marketFxRate ? t.marketFxRate.toFixed(4) : '1.0000')}</span>
                                                                         <span class="w-24 text-right text-slate-900">${formatCurrency(t.value)}</span>
                                                                     </div>
                                                                 </div>
