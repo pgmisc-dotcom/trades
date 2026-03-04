@@ -388,47 +388,62 @@
         let isMarketLoading = false;
         let selectedSector = null;
 
-        async function fetchMarketSummary() {
-            if (isMarketLoading) return;
-            isMarketLoading = true;
-            render();
+      async function fetchMarketSummary() {
+    if (isMarketLoading) return;
 
-            try {
-                // Simulate a real fetch with detailed ticker data
-                await new Promise(resolve => setTimeout(resolve, 1200));
-                const rawData = MARKET_DATA.map(s => {
-                    const tickers = s.tickers.map(symbol => {
-                        const change = parseFloat((Math.random() * 6 - 3.5).toFixed(1)); // Slightly biased downwards to show drops
-                        // Generate a semi-realistic price based on symbol type
-                        let basePrice = 100;
-                        if (symbol.endsWith('.LSE')) basePrice = 250;
-                        if (symbol.endsWith('.US')) basePrice = 150;
-                        if (symbol.endsWith('.INDX')) basePrice = 4000;
-                        const price = (basePrice + (Math.random() * basePrice * 0.1)).toFixed(2);
-                        
-                        return { symbol, change, price };
-                    });
-                    
-                    const avgChange = tickers.reduce((acc, t) => acc + t.change, 0) / tickers.length;
-                    
-                    return {
-                        name: s.sector,
-                        avgChange: parseFloat(avgChange.toFixed(2)),
-                        status: avgChange >= 0 ? 'Up' : 'Down',
-                        trend: `Sector performance is currently ${avgChange >= 0 ? 'bullish' : 'bearish'} with an average ${avgChange >= 0 ? 'gain' : 'drop'} of ${Math.abs(avgChange).toFixed(1)}%.`,
-                        tickers: tickers
-                    };
-                });
+    isMarketLoading = true;
+    render();
 
-                // Order by most dropped first (lowest avgChange)
-                marketSummaryData = rawData.sort((a, b) => a.avgChange - b.avgChange);
-            } catch (error) {
-                console.error("Error fetching market summary:", error);
-            } finally {
-                isMarketLoading = false;
-                render();
-            }
-        }
+    try {
+        const rawData = await Promise.all(
+            MARKET_DATA.map(async (sector) => {
+
+                const tickers = await Promise.all(
+                    sector.tickers.map(async (symbol) => {
+                        try {
+                            const res = await fetch(
+                                `https://your-vercel-project.vercel.app/api/data?symbol=${symbol}`
+                            );
+
+                            const json = await res.json();
+                            const price = parseFloat(json.price);
+
+                            return {
+                                symbol,
+                                price: price || 0,
+                                change: 0
+                            };
+
+                        } catch (err) {
+                            console.error("Ticker error:", symbol, err);
+                            return {
+                                symbol,
+                                price: 0,
+                                change: 0
+                            };
+                        }
+                    })
+                );
+
+                return {
+                    name: sector.sector,
+                    avgChange: 0,
+                    status: "Live",
+                    trend: "Live pricing via Vercel",
+                    tickers
+                };
+            })
+        );
+
+        marketSummaryData = rawData;
+
+    } catch (error) {
+        console.error("Error fetching market summary:", error);
+    } finally {
+        isMarketLoading = false;
+        render();
+    }
+}
 
         function toggleSector(name) {
             selectedSector = selectedSector === name ? null : name;
