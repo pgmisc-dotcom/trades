@@ -402,7 +402,7 @@
                     sector.tickers.map(async (symbol) => {
                         try {
                             const res = await fetch(
-                                `https://your-vercel-project.vercel.app/api/data?symbol=${symbol}`
+                                `https://my-api-backend.vercel.app/api/data?symbol=${symbol}`
                             );
 
                             const json = await res.json();
