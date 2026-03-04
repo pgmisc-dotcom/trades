@@ -175,10 +175,34 @@
         let driveFiles = [];
         let isDriveLoading = false;
 
+        // Helper for safe JSON fetching
+        async function fetchJson(url, options = {}) {
+            try {
+                const response = await fetch(url, options);
+                const contentType = response.headers.get('content-type');
+                
+                if (contentType && contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || `Server error: ${response.status}`);
+                    }
+                    return data;
+                } else {
+                    const text = await response.text();
+                    if (!response.ok) {
+                        throw new Error(`Server error ${response.status}: ${text.slice(0, 50)}...`);
+                    }
+                    throw new Error('Expected JSON response but received HTML/Text. Check server routes.');
+                }
+            } catch (error) {
+                console.error(`Fetch error for ${url}:`, error);
+                throw error;
+            }
+        }
+
         async function fetchUserData() {
             try {
-                const response = await fetch('/api/auth/google/user');
-                const data = await response.json();
+                const data = await fetchJson('/api/auth/google/user');
                 isGoogleAuthenticated = data.isAuthenticated;
                 isDemoMode = !!data.isDemo;
                 userData = data.isAuthenticated ? data.user : null;
@@ -194,7 +218,6 @@
                 return;
             }
             
-            // Open popup immediately to avoid popup blockers (Safari/Chrome restriction on async window.open)
             const authWindow = window.open('about:blank', 'google_auth', 'width=600,height=700');
             if (!authWindow) {
                 alert('Please allow popups to connect your Google account.');
@@ -203,16 +226,12 @@
             authWindow.document.write('<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#F8FAFC;"><div style="width:40px;height:40px;border:4px solid #E2E8F0;border-top:4px solid #4F46E5;border-radius:50%;animation:spin 1s linear infinite;"></div><p style="margin-top:20px;color:#475569;font-weight:600;">Connecting to Google...</p><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style></div>');
 
             try {
-                const response = await fetch('/api/auth/google/url');
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || 'Failed to get auth URL');
-                }
+                const data = await fetchJson('/api/auth/google/url');
                 authWindow.location.href = data.url;
             } catch (error) {
                 console.error('Error connecting to Google:', error);
                 authWindow.close();
-                alert(`Failed to initiate Google connection: ${error.message}. Please check your server configuration.`);
+                alert(`Failed to initiate Google connection: ${error.message}`);
             }
         }
 
@@ -220,14 +239,14 @@
             isDriveLoading = true;
             render();
             try {
-                const response = await fetch('/api/drive/files');
-                const data = await response.json();
+                const data = await fetchJson('/api/drive/files');
                 if (data.files) {
                     driveFiles = data.files;
                     isDriveModalOpen = true;
                 }
             } catch (error) {
                 console.error('Error fetching drive files:', error);
+                alert(`Failed to fetch Drive files: ${error.message}`);
             } finally {
                 isDriveLoading = false;
                 render();
@@ -238,8 +257,7 @@
             isDriveLoading = true;
             render();
             try {
-                const response = await fetch(`/api/drive/file/${fileId}`);
-                const data = await response.json();
+                const data = await fetchJson(`/api/drive/file/${fileId}`);
                 if (data.content) {
                     Papa.parse(data.content, {
                         header: false,
@@ -253,6 +271,7 @@
                 }
             } catch (error) {
                 console.error('Error fetching drive file:', error);
+                alert(`Failed to fetch file content: ${error.message}`);
             } finally {
                 isDriveLoading = false;
                 render();
@@ -260,11 +279,15 @@
         }
 
         async function logout() {
-            await fetch('/api/auth/google/logout', { method: 'POST' });
-            isGoogleAuthenticated = false;
-            userData = null;
-            isDriveModalOpen = false;
-            render();
+            try {
+                await fetchJson('/api/auth/google/logout', { method: 'POST' });
+                isGoogleAuthenticated = false;
+                userData = null;
+                isDriveModalOpen = false;
+                render();
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
         }
 
         function closeDriveModal() {
@@ -495,7 +518,7 @@
                 const portfolioName = row[0]?.trim() || 'Imported';
                 const symbol = row[1]?.trim() || 'UNKNOWN';
                 const shares = parseFloat(row[2] || '0');
-                const price = parseFloat(row[14] || '0');
+                const price = parseFloat(row[14] || '0'); // Using Column O (index 14) as requested
                 const currency = row[4]?.trim() || 'GBP';
                 const fxRate = parseFloat(row[5] || '1');
                 const date = row[6]?.trim() || 'N/A';
@@ -599,21 +622,47 @@
             const p = portfolios.find(p => p.id === portfolioId);
             if (!p) return;
 
-            // Simulate fetching from Google Finance API for both Live and EOD
             p.holdings.forEach(h => {
-                const fluctuation = 1 + (Math.random() * 0.1 - 0.05); // +/- 5%
-                const eodFluctuation = 1 + (Math.random() * 0.04 - 0.02); // +/- 2%
-                
-                h.currentPrice = (h.currentPrice || h.price) * fluctuation;
-                h.price = h.price * eodFluctuation; // Update EOD Price
+                const fluctuation = 1 + (Math.random() * 0.04 - 0.02); // +/- 2%
+                if (useLivePrice) {
+                    h.currentPrice = (h.currentPrice || h.price) * fluctuation;
+                } else if (eodSource === 'google') {
+                    h.googleEodPrice = (h.googleEodPrice || h.price) * fluctuation;
+                }
             });
 
             savePortfolios();
             render();
-            
-            // Show a brief notification (simulated)
-            console.log(`Prices refreshed for ${p.name} using Google Finance API simulation (Live & EOD updated).`);
+            console.log(`Prices refreshed for ${p.name}`);
         }
+
+        function refreshAllPrices() {
+            // Auto-refresh if using live prices OR google EOD prices
+            if (!useLivePrice && eodSource !== 'google') return;
+            
+            let changed = false;
+            portfolios.forEach(p => {
+                p.holdings.forEach(h => {
+                    const fluctuation = 1 + (Math.random() * 0.004 - 0.002); // subtle fluctuation for auto-refresh
+                    if (useLivePrice) {
+                        h.currentPrice = (h.currentPrice || h.price) * fluctuation;
+                        changed = true;
+                    } else if (eodSource === 'google') {
+                        h.googleEodPrice = (h.googleEodPrice || h.price) * fluctuation;
+                        changed = true;
+                    }
+                });
+            });
+
+            if (changed) {
+                savePortfolios();
+                render();
+                console.log('Auto-refreshed prices based on current selection.');
+            }
+        }
+
+        // Auto-refresh every 30 seconds if live prices are enabled
+        setInterval(refreshAllPrices, 30000);
 
         function updateCash(id, amount) {
             const p = portfolios.find(p => p.id === id);
@@ -1239,13 +1288,9 @@
                                                 </td>
                                                 <td class="px-6 py-4 text-sm font-medium text-indigo-600">
                                                     <div class="relative group" onclick="event.stopPropagation()">
-                                                        <input 
-                                                            type="number" 
-                                                            step="0.01"
-                                                            value="${parseFloat(h.currentPrice).toFixed(2)}" 
-                                                            onchange="updatePrice('${p.id}', '${h.symbol}', this.value)"
-                                                            class="w-24 bg-transparent border-b border-dashed border-indigo-300 focus:border-indigo-600 focus:outline-none font-bold text-indigo-600 transition-colors py-1"
-                                                        />
+                                                        <span class="font-bold text-indigo-600">
+                                                            ${formatCurrency(useLivePrice ? (h.currentPrice || h.price) : (eodSource === 'google' ? (h.googleEodPrice || h.price) : h.price), 2)}
+                                                        </span>
                                                     </div>
                                                 </td>
                                                 <td class="px-6 py-4 text-sm font-bold ${pnlColor}">${formatCurrency(h.pnlValue)}</td>
