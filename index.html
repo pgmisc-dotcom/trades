@@ -388,7 +388,7 @@
         let isMarketLoading = false;
         let selectedSector = null;
 
-      async function fetchMarketSummary() {
+        async function fetchMarketSummary() {
     if (isMarketLoading) return;
 
     isMarketLoading = true;
@@ -402,25 +402,20 @@
                     sector.tickers.map(async (symbol) => {
                         try {
                             const res = await fetch(
-                                `https://my-api-backend.vercel.app/api/data?symbol=${symbol}`
+                                `https://your-vercel-project.vercel.app/api/data?symbol=${symbol}`
                             );
 
                             const json = await res.json();
-                            const price = parseFloat(json.price);
 
                             return {
                                 symbol,
-                                price: price || 0,
+                                price: json.price || 0,
                                 change: 0
                             };
 
                         } catch (err) {
-                            console.error("Ticker error:", symbol, err);
-                            return {
-                                symbol,
-                                price: 0,
-                                change: 0
-                            };
+                            console.error("Ticker error:", symbol);
+                            return { symbol, price: 0, change: 0 };
                         }
                     })
                 );
@@ -438,7 +433,7 @@
         marketSummaryData = rawData;
 
     } catch (error) {
-        console.error("Error fetching market summary:", error);
+        console.error("Market summary error:", error);
     } finally {
         isMarketLoading = false;
         render();
