@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -78,7 +79,7 @@
                     class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-indigo-600 hover:bg-indigo-50 border border-dashed border-indigo-200 mt-4 transition-all"
                 >
                     <i data-lucide="upload" class="w-[18px] h-[18px]"></i>
-                    Import CSV
+                    Import CSV/Excel
                 </button>
 
                 <button 
@@ -151,8 +152,8 @@
         </div>
     </main>
 
-    <input type="file" id="csv-input" accept=".csv" class="hidden" onchange="handleFileUpload(event)">
-    <input type="file" id="strategy-csv-input" accept=".csv" class="hidden" onchange="handleStrategyFileUpload(event)">
+    <input type="file" id="csv-input" accept=".csv,.xlsx,.xls" class="hidden" onchange="handleFileUpload(event)">
+    <input type="file" id="strategy-csv-input" accept=".csv,.xlsx,.xls" class="hidden" onchange="handleStrategyFileUpload(event)">
 
     <script>
         // --- State ---
@@ -188,29 +189,36 @@
         async function fetchJson(url, options = {}) {
             try {
                 const response = await fetch(url, options);
-                const contentType = response.headers.get('content-type');
+                const text = await response.text();
                 
                 let data;
-                const text = await response.text();
+                const contentType = response.headers.get('content-type');
                 
                 if (contentType && contentType.includes('application/json')) {
                     try {
                         data = JSON.parse(text);
                     } catch (e) {
-                        console.error('Failed to parse JSON even though content-type was application/json:', text);
-                        throw new Error('Invalid JSON response from server.');
+                        console.error('JSON Parse Error. Raw response:', text);
+                        throw new Error(`Invalid JSON response from ${url}. See console for details.`);
                     }
-                    
-                    if (!response.ok) {
-                        throw new Error(data.error || `Server error: ${response.status}`);
-                    }
-                    return data;
-                } else {
-                    if (!response.ok) {
-                        throw new Error(`Server error ${response.status}: ${text.slice(0, 100)}...`);
-                    }
-                    // If it's 200 OK but not JSON, it's likely the SPA fallback
-                    throw new Error('Received HTML instead of JSON. This usually means the API route is missing or the server is restarting.');
+                }
+
+                if (!response.ok) {
+                    const errorMsg = (data && data.error) || `Server error ${response.status}: ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`;
+                    throw new Error(errorMsg);
+                }
+
+                if (data !== undefined) return data;
+                
+                // If we expected JSON but didn't get it
+                if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+                    throw new Error('Received HTML instead of JSON. The server might be restarting or the API route is incorrect.');
+                }
+                
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    return text;
                 }
             } catch (error) {
                 console.error(`Fetch error for ${url}:`, error);
@@ -457,61 +465,78 @@
             const file = event.target.files[0];
             if (!file) return;
 
-            Papa.parse(file, {
-                header: false,
-                skipEmptyLines: true,
-                complete: (results) => {
-                    const rawData = results.data;
-                    if (rawData.length === 0) return;
+            const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
 
-                    let codeIdx = 0;
-                    let sectorIdx = 1;
-
-                    const firstRow = rawData[0].map(c => String(c).toLowerCase().trim());
-                    const hasHeaders = firstRow.some(c => c.includes('code') || c.includes('sector') || c.includes('strategy') || c.includes('industry'));
-
-                    if (hasHeaders) {
-                        const cIdx = firstRow.findIndex(c => c.includes('code') || c.includes('strategy'));
-                        const sIdx = firstRow.findIndex(c => c.includes('sector') || c.includes('industry'));
-                        if (cIdx !== -1) codeIdx = cIdx;
-                        if (sIdx !== -1) sectorIdx = sIdx;
-                        else if (rawData[0].length >= 2) {
-                            sectorIdx = codeIdx === 0 ? 1 : 0;
-                            if (rawData[0].length === 4 && sectorIdx === 1) sectorIdx = 3;
-                        }
-                    } else {
-                        codeIdx = 0;
-                        sectorIdx = rawData[0].length === 4 ? 3 : 1;
+            if (isExcel) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    processStrategyData(rawData);
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                Papa.parse(file, {
+                    header: false,
+                    skipEmptyLines: true,
+                    complete: (results) => {
+                        processStrategyData(results.data);
+                    },
+                    error: (error) => {
+                        console.error('Strategy CSV Parsing Error:', error);
+                        alert('Failed to parse Strategy CSV.');
                     }
-
-                    const startIdx = hasHeaders ? 1 : 0;
-                    const newMappings = [];
-
-                    for (let i = startIdx; i < rawData.length; i++) {
-                        const row = rawData[i];
-                        if (!row || row.length < 2) continue;
-                        const code = row[codeIdx]?.trim();
-                        const sector = row[sectorIdx]?.trim();
-                        
-                        if (code && sector) {
-                            newMappings.push({ code, sector });
-                        }
-                    }
-                    
-                    strategyMappings = newMappings;
-                    saveStrategies();
-                    alert(`Successfully imported ${newMappings.length} strategy mappings.`);
-                    render();
-                },
-                error: (error) => {
-                    console.error('Strategy CSV Parsing Error:', error);
-                    alert('Failed to parse Strategy CSV. Ensure it has "Code" and "Sector" headers.');
-                }
-            });
+                });
+            }
             event.target.value = '';
         }
 
-        function processCsvData(rawData) {
+        function processStrategyData(rawData) {
+            if (rawData.length === 0) return;
+
+            let codeIdx = 0;
+            let sectorIdx = 1;
+
+            const firstRow = rawData[0].map(c => String(c).toLowerCase().trim());
+            const hasHeaders = firstRow.some(c => c.includes('code') || c.includes('sector') || c.includes('strategy') || c.includes('industry'));
+
+            if (hasHeaders) {
+                const cIdx = firstRow.findIndex(c => c.includes('code') || c.includes('strategy'));
+                const sIdx = firstRow.findIndex(c => c.includes('sector') || c.includes('industry'));
+                if (cIdx !== -1) codeIdx = cIdx;
+                if (sIdx !== -1) sectorIdx = sIdx;
+                else if (rawData[0].length >= 2) {
+                    sectorIdx = codeIdx === 0 ? 1 : 0;
+                    if (rawData[0].length === 4 && sectorIdx === 1) sectorIdx = 3;
+                }
+            } else {
+                codeIdx = 0;
+                sectorIdx = rawData[0].length === 4 ? 3 : 1;
+            }
+
+            const startIdx = hasHeaders ? 1 : 0;
+            const newMappings = [];
+
+            for (let i = startIdx; i < rawData.length; i++) {
+                const row = rawData[i];
+                if (!row || row.length < 2) continue;
+                const code = row[codeIdx]?.trim();
+                const sector = row[sectorIdx]?.trim();
+                
+                if (code && sector) {
+                    newMappings.push({ code, sector });
+                }
+            }
+            
+            strategyMappings = newMappings;
+            saveStrategies();
+            alert(`Successfully imported ${newMappings.length} strategy mappings.`);
+            render();
+        }
+
+        function processCsvData(rawData, cashMap = {}) {
             if (rawData.length === 0) return;
 
             const startIdx = (isNaN(parseFloat(rawData[0][2])) && isNaN(parseFloat(rawData[0][3]))) ? 1 : 0;
@@ -583,16 +608,26 @@
                 }
             }
 
-            if (newRowsAdded === 0) {
-                alert('No new unique trades found.');
+            if (newRowsAdded === 0 && Object.keys(cashMap).length === 0) {
+                alert('No new unique trades or cash updates found.');
                 return;
             }
+
+            // Update cash for existing portfolios if present in cashMap
+            Object.entries(cashMap).forEach(([name, cash]) => {
+                const existing = portfolios.find(p => p.name === name);
+                if (existing) {
+                    existing.cash = cash;
+                }
+            });
 
             Object.entries(portfoliosMap).forEach(([name, symbolMap], pIdx) => {
                 const existingPortfolio = portfolios.find(p => p.name === name);
                 const newHoldings = Object.values(symbolMap);
+                const cash = cashMap[name] || 0;
 
                 if (existingPortfolio) {
+                    existingPortfolio.cash = cash || existingPortfolio.cash;
                     newHoldings.forEach(newH => {
                         const existingH = existingPortfolio.holdings.find(h => h.symbol === newH.symbol);
                         if (existingH) {
@@ -612,7 +647,7 @@
                         name,
                         color: ['#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f43f5e', '#10b981'][portfolios.length % 6],
                         holdings: newHoldings,
-                        cash: 0
+                        cash: cash
                     });
                 }
             });
@@ -625,14 +660,71 @@
             const file = event.target.files[0];
             if (!file) return;
 
-            Papa.parse(file, {
-                header: false,
-                skipEmptyLines: true,
-                complete: (results) => {
-                    processCsvData(results.data);
-                    event.target.value = '';
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    // 1. Process Trades from "Trades Export" sheet
+                    const tradesSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'trades export') || workbook.SheetNames[0];
+                    const tradesSheet = workbook.Sheets[tradesSheetName];
+                    const tradesData = XLSX.utils.sheet_to_json(tradesSheet, { header: 1 });
+                    
+                    console.log(`Processing trades from sheet: ${tradesSheetName}`);
+
+                    // 2. Process Cash from sheets named after portfolios
+                    const cashMap = {};
+                    workbook.SheetNames.forEach(sheetName => {
+                        // Skip the trades sheet
+                        if (sheetName.toLowerCase() === 'trades export') return;
+
+                        const sheet = workbook.Sheets[sheetName];
+                        const sheetData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                        
+                        let cashValue = 0;
+                        // Heuristic: look for "Cash" or "Balance" label
+                        for (const row of sheetData) {
+                            if (!Array.isArray(row)) continue;
+                            const cashIdx = row.findIndex(cell => 
+                                typeof cell === 'string' && 
+                                (cell.toLowerCase().includes('cash') || cell.toLowerCase().includes('balance'))
+                            );
+                            if (cashIdx !== -1 && row[cashIdx + 1] !== undefined) {
+                                cashValue = parseNumber(row[cashIdx + 1]);
+                                if (cashValue !== 0) break;
+                            }
+                        }
+                        
+                        // Fallback: if no label found, look for any number in the sheet
+                        if (cashValue === 0) {
+                            for (const row of sheetData) {
+                                if (!Array.isArray(row)) continue;
+                                for (const cell of row) {
+                                    const val = parseNumber(cell);
+                                    if (val > 0) {
+                                        cashValue = val;
+                                        break;
+                                    }
+                                }
+                                if (cashValue > 0) break;
+                            }
+                        }
+                        
+                        if (cashValue !== 0) {
+                            console.log(`Extracted cash for portfolio "${sheetName}": ${cashValue}`);
+                            cashMap[sheetName] = cashValue;
+                        }
+                    });
+
+                    processCsvData(tradesData, cashMap);
+                } catch (err) {
+                    console.error('File Processing Error:', err);
+                    alert(`Error processing file: ${err.message}`);
                 }
-            });
+                event.target.value = '';
+            };
+            reader.readAsArrayBuffer(file);
         }
 
         let expandedAsset = null;
