@@ -198,6 +198,7 @@
         let portfolios = JSON.parse(localStorage.getItem('foliotrack_portfolios')) || INITIAL_PORTFOLIOS;
         let strategyMappings = JSON.parse(localStorage.getItem('foliotrack_strategies')) || [];
         let selectedExposureSector = null;
+        let selectedExposurePortfolio = null;
 
         let isGoogleAuthenticated = false;
         let isDemoMode = false;
@@ -1588,7 +1589,18 @@
 
         function toggleExposureSector(name) {
             console.log('Toggling sector exposure:', name);
-            selectedExposureSector = selectedExposureSector === name ? null : name;
+            if (selectedExposureSector === name) {
+                selectedExposureSector = null;
+                selectedExposurePortfolio = null;
+            } else {
+                selectedExposureSector = name;
+                selectedExposurePortfolio = null;
+            }
+            render();
+        }
+
+        function toggleExposurePortfolio(name) {
+            selectedExposurePortfolio = selectedExposurePortfolio === name ? null : name;
             render();
         }
 
@@ -1611,9 +1623,14 @@
 
                     // Portfolio breakdown
                     if (!sectorDataMap[sector].portfolioBreakdown[p.name]) {
-                        sectorDataMap[sector].portfolioBreakdown[p.name] = { value: 0, color: p.color };
+                        sectorDataMap[sector].portfolioBreakdown[p.name] = { value: 0, color: p.color, tickers: [] };
                     }
                     sectorDataMap[sector].portfolioBreakdown[p.name].value += val;
+                    sectorDataMap[sector].portfolioBreakdown[p.name].tickers.push({
+                        symbol: h.symbol,
+                        name: TICKER_NAMES[h.symbol.toUpperCase()] || h.name || h.symbol,
+                        value: val
+                    });
 
                     // Ticker breakdown
                     if (!sectorDataMap[sector].tickerBreakdown[h.symbol]) {
@@ -1628,7 +1645,12 @@
                 value: data.value,
                 count: data.count,
                 portfolioBreakdown: Object.entries(data.portfolioBreakdown)
-                    .map(([pName, pData]) => ({ name: pName, value: pData.value, color: pData.color }))
+                    .map(([pName, pData]) => ({ 
+                        name: pName, 
+                        value: pData.value, 
+                        color: pData.color,
+                        tickers: pData.tickers.sort((a, b) => b.value - a.value)
+                    }))
                     .sort((a, b) => b.value - a.value),
                 tickerBreakdown: Object.entries(data.tickerBreakdown)
                     .map(([symbol, tData]) => ({ symbol, name: tData.name, value: tData.value }))
@@ -1678,15 +1700,40 @@
                                                             <div>
                                                                 <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-4">Portfolio Exposure</p>
                                                                 <div class="space-y-3">
-                                                                    ${item.portfolioBreakdown.map(p => `
-                                                                        <div class="flex items-center justify-between text-xs">
-                                                                            <div class="flex items-center gap-2">
-                                                                                <div class="w-2 h-2 rounded-full" style="background-color: ${p.color}"></div>
-                                                                                <span class="text-slate-600 font-medium">${p.name}</span>
+                                                                    ${item.portfolioBreakdown.map(p => {
+                                                                        const isPortfolioSelected = selectedExposurePortfolio === p.name;
+                                                                        return `
+                                                                            <div class="space-y-2">
+                                                                                <button 
+                                                                                    onclick="toggleExposurePortfolio('${p.name.replace(/'/g, "\\'")}')"
+                                                                                    class="w-full flex items-center justify-between p-3 rounded-xl transition-all ${isPortfolioSelected ? 'bg-indigo-50 ring-1 ring-indigo-100' : 'hover:bg-slate-50 border border-transparent hover:border-slate-100'}"
+                                                                                >
+                                                                                    <div class="flex items-center gap-2">
+                                                                                        <div class="w-2 h-2 rounded-full" style="background-color: ${p.color}"></div>
+                                                                                        <span class="text-xs text-slate-600 font-medium">${p.name}</span>
+                                                                                    </div>
+                                                                                    <div class="flex items-center gap-2">
+                                                                                        <span class="text-xs font-bold text-slate-900">${formatCurrency(p.value)}</span>
+                                                                                        <i data-lucide="chevron-right" class="w-3 h-3 text-slate-400 transition-transform ${isPortfolioSelected ? 'rotate-90' : ''}"></i>
+                                                                                    </div>
+                                                                                </button>
+                                                                                
+                                                                                ${isPortfolioSelected ? `
+                                                                                    <div class="pl-4 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                                                        ${p.tickers.map(t => `
+                                                                                            <div class="flex items-center justify-between text-[10px] p-2 bg-white rounded-lg border border-indigo-50">
+                                                                                                <div class="flex flex-col">
+                                                                                                    <span class="font-bold text-slate-700">${t.symbol}</span>
+                                                                                                    <span class="text-[9px] text-slate-400 truncate max-w-[100px]">${t.name}</span>
+                                                                                                </div>
+                                                                                                <span class="font-bold text-slate-900">${formatCurrency(t.value)}</span>
+                                                                                            </div>
+                                                                                        `).join('')}
+                                                                                    </div>
+                                                                                ` : ''}
                                                                             </div>
-                                                                            <span class="font-bold text-slate-900">${formatCurrency(p.value)}</span>
-                                                                        </div>
-                                                                    `).join('')}
+                                                                        `;
+                                                                    }).join('')}
                                                                 </div>
                                                             </div>
 
