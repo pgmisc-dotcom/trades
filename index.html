@@ -1928,5 +1928,67 @@
         fetchMarketSummary();
         render();
     </script>
+
+<script>
+// ===============================
+// LIVE PRICING + CACHING LAYER
+// ===============================
+
+// Change this to your real Vercel URL
+const VERCEL_API_BASE = "https://my-api-backend.vercel.app/api/data";
+
+// Simple in-memory cache
+const priceCache = {};
+const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
+async function fetchLivePrice(symbol) {
+    const now = Date.now();
+
+    // Return cached value if valid
+    if (priceCache[symbol] && (now - priceCache[symbol].timestamp < CACHE_DURATION_MS)) {
+        return priceCache[symbol].price;
+    }
+
+    try {
+        const response = await fetch(`${VERCEL_API_BASE}?symbol=${symbol}`);
+        const data = await response.json();
+
+        const price = parseFloat(data.price);
+
+        // Store in cache
+        priceCache[symbol] = {
+            price: price,
+            timestamp: now
+        };
+
+        return price;
+
+    } catch (err) {
+        console.error("Live price fetch error:", err);
+        return null;
+    }
+}
+
+// ===============================
+// REPLACE ALL PRICE USAGE WITH LIVE
+// ===============================
+
+async function updateAllLivePrices() {
+    if (typeof MARKET_DATA === "undefined") return;
+
+    for (const sector of MARKET_DATA) {
+        for (const symbol of sector.tickers) {
+            const livePrice = await fetchLivePrice(symbol);
+            console.log("Updated:", symbol, livePrice);
+        }
+    }
+}
+
+// Call after page load
+document.addEventListener("DOMContentLoaded", () => {
+    updateAllLivePrices();
+});
+</script>
+
 </body>
 </html>
