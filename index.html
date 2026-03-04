@@ -565,7 +565,7 @@
             render();
         }
 
-        function processCsvData(rawData, cashMap = {}) {
+        function processCsvData(rawData, cashMap = {}, nameMap = {}) {
             if (rawData.length === 0) return;
 
             const startIdx = (isNaN(parseFloat(rawData[0][2])) && isNaN(parseFloat(rawData[0][3]))) ? 1 : 0;
@@ -597,7 +597,7 @@
                 const date = row[6]?.trim() || 'N/A';
                 const strategy = row[12]?.trim() || 'N/A';
                 
-                const longName = TICKER_NAMES[symbol.toUpperCase()] || symbol;
+                const longName = nameMap[symbol.toUpperCase()] || TICKER_NAMES[symbol.toUpperCase()] || symbol;
                 
                 let adjustedPrice = price;
                 if (currency === 'GBp') adjustedPrice = price / 100;
@@ -708,8 +708,9 @@
                     
                     console.log(`Processing trades from sheet: ${tradesSheetName}`);
 
-                    // 2. Process Cash from sheets named after portfolios
+                    // 2. Process Cash and Names from sheets named after portfolios
                     const cashMap = {};
+                    const nameMap = {};
                     workbook.SheetNames.forEach(sheetName => {
                         // Skip the trades sheet
                         if (sheetName.toLowerCase() === 'trades export') return;
@@ -717,6 +718,18 @@
                         const sheet = workbook.Sheets[sheetName];
                         const sheetData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
                         
+                        // Extract Names: Column A is Symbol, Column B is Name
+                        sheetData.forEach(row => {
+                            if (Array.isArray(row) && row.length >= 2) {
+                                const sym = String(row[0]).trim().toUpperCase();
+                                const name = String(row[1]).trim();
+                                // Basic validation to skip headers or empty rows
+                                if (sym && name && sym !== 'SYMBOL' && sym !== 'CODE' && sym !== 'TICKER') {
+                                    nameMap[sym] = name;
+                                }
+                            }
+                        });
+
                         let cashValue = 0;
                         // Heuristic: look for "Cash" or "Balance" label
                         for (const row of sheetData) {
@@ -752,7 +765,7 @@
                         }
                     });
 
-                    processCsvData(tradesData, cashMap);
+                    processCsvData(tradesData, cashMap, nameMap);
                 } catch (err) {
                     console.error('File Processing Error:', err);
                     alert(`Error processing file: ${err.message}`);
