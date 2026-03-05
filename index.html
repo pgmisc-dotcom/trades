@@ -388,47 +388,75 @@
         let isMarketLoading = false;
         let selectedSector = null;
 
-        async function fetchMarketSummary() {
-            if (isMarketLoading) return;
-            isMarketLoading = true;
-            render();
+    async function fetchMarketSummary() {
 
-            try {
-                // Simulate a real fetch with detailed ticker data
-                await new Promise(resolve => setTimeout(resolve, 1200));
-                const rawData = MARKET_DATA.map(s => {
-                    const tickers = s.tickers.map(symbol => {
-                        const change = parseFloat((Math.random() * 6 - 3.5).toFixed(1)); // Slightly biased downwards to show drops
-                        // Generate a semi-realistic price based on symbol type
-                        let basePrice = 100;
-                        if (symbol.endsWith('.LSE')) basePrice = 250;
-                        if (symbol.endsWith('.US')) basePrice = 150;
-                        if (symbol.endsWith('.INDX')) basePrice = 4000;
-                        const price = (basePrice + (Math.random() * basePrice * 0.1)).toFixed(2);
-                        
-                        return { symbol, change, price };
+    if (isMarketLoading) return;
+
+    isMarketLoading = true;
+    render();
+
+    try {
+
+        const sectors = [];
+
+        for (const sector of MARKET_DATA) {
+
+            const tickers = [];
+
+            for (const symbol of sector.tickers) {
+
+                try {
+
+                    const response = await fetch(
+                        `https://YOUR-VERCEL-PROJECT.vercel.app/api/data?symbol=${symbol}`
+                    );
+
+                    const data = await response.json();
+
+                    console.log("Ticker response:", symbol, data);
+
+                    tickers.push({
+                        symbol: symbol,
+                        price: Number(data.price),
+                        change: 0
                     });
-                    
-                    const avgChange = tickers.reduce((acc, t) => acc + t.change, 0) / tickers.length;
-                    
-                    return {
-                        name: s.sector,
-                        avgChange: parseFloat(avgChange.toFixed(2)),
-                        status: avgChange >= 0 ? 'Up' : 'Down',
-                        trend: `Sector performance is currently ${avgChange >= 0 ? 'bullish' : 'bearish'} with an average ${avgChange >= 0 ? 'gain' : 'drop'} of ${Math.abs(avgChange).toFixed(1)}%.`,
-                        tickers: tickers
-                    };
-                });
 
-                // Order by most dropped first (lowest avgChange)
-                marketSummaryData = rawData.sort((a, b) => a.avgChange - b.avgChange);
-            } catch (error) {
-                console.error("Error fetching market summary:", error);
-            } finally {
-                isMarketLoading = false;
-                render();
+                } catch (err) {
+
+                    console.error("Ticker failed:", symbol);
+
+                    tickers.push({
+                        symbol: symbol,
+                        price: 0,
+                        change: 0
+                    });
+
+                }
+
             }
+
+            sectors.push({
+                name: sector.sector,
+                avgChange: 0,
+                status: "Live",
+                trend: "Live pricing via Vercel",
+                tickers: tickers
+            });
+
         }
+
+        marketSummaryData = sectors;
+
+    } catch (err) {
+
+        console.error("Market summary error:", err);
+
+    }
+
+    isMarketLoading = false;
+
+    render();
+}
 
         function toggleSector(name) {
             selectedSector = selectedSector === name ? null : name;
@@ -1928,5 +1956,67 @@
         fetchMarketSummary();
         render();
     </script>
+
+<script>
+// ===============================
+// LIVE PRICING + CACHING LAYER
+// ===============================
+
+// Change this to your real Vercel URL
+const VERCEL_API_BASE = "https://my-api-backend.vercel.app/api/data";
+
+// Simple in-memory cache
+const priceCache = {};
+const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
+async function fetchLivePrice(symbol) {
+    const now = Date.now();
+
+    // Return cached value if valid
+    if (priceCache[symbol] && (now - priceCache[symbol].timestamp < CACHE_DURATION_MS)) {
+        return priceCache[symbol].price;
+    }
+
+    try {
+        const response = await fetch(`${VERCEL_API_BASE}?symbol=${symbol}`);
+        const data = await response.json();
+
+        const price = parseFloat(data.price);
+
+        // Store in cache
+        priceCache[symbol] = {
+            price: price,
+            timestamp: now
+        };
+
+        return price;
+
+    } catch (err) {
+        console.error("Live price fetch error:", err);
+        return null;
+    }
+}
+
+// ===============================
+// REPLACE ALL PRICE USAGE WITH LIVE
+// ===============================
+
+async function updateAllLivePrices() {
+    if (typeof MARKET_DATA === "undefined") return;
+
+    for (const sector of MARKET_DATA) {
+        for (const symbol of sector.tickers) {
+            const livePrice = await fetchLivePrice(symbol);
+            console.log("Updated:", symbol, livePrice);
+        }
+    }
+}
+
+// Call after page load
+document.addEventListener("DOMContentLoaded", () => {
+    updateAllLivePrices();
+});
+</script>
+
 </body>
 </html>
