@@ -388,40 +388,32 @@
         let isMarketLoading = false;
         let selectedSector = null;
 
+        // Helper for Yahoo Finance symbol conversion
+        function convertSymbolForYahoo(symbol) {
+            if (!symbol) return '';
+            let s = symbol.toUpperCase().trim();
+            if (s.endsWith('.LSE')) return s.replace('.LSE', '.L');
+            if (s.endsWith('.US')) return s.replace('.US', '');
+            return s;
+        }
+
         async function fetchMarketSummary() {
             if (isMarketLoading) return;
             isMarketLoading = true;
             render();
 
             try {
-                // Simulate a real fetch with detailed ticker data
-                await new Promise(resolve => setTimeout(resolve, 1200));
-                const rawData = MARKET_DATA.map(s => {
-                    const tickers = s.tickers.map(symbol => {
-                        const change = parseFloat((Math.random() * 6 - 3.5).toFixed(1)); // Slightly biased downwards to show drops
-                        // Generate a semi-realistic price based on symbol type
-                        let basePrice = 100;
-                        if (symbol.endsWith('.LSE')) basePrice = 250;
-                        if (symbol.endsWith('.US')) basePrice = 150;
-                        if (symbol.endsWith('.INDX')) basePrice = 4000;
-                        const price = (basePrice + (Math.random() * basePrice * 0.1)).toFixed(2);
-                        
-                        return { symbol, change, price };
-                    });
-                    
-                    const avgChange = tickers.reduce((acc, t) => acc + t.change, 0) / tickers.length;
-                    
-                    return {
-                        name: s.sector,
-                        avgChange: parseFloat(avgChange.toFixed(2)),
-                        status: avgChange >= 0 ? 'Up' : 'Down',
-                        trend: `Sector performance is currently ${avgChange >= 0 ? 'bullish' : 'bearish'} with an average ${avgChange >= 0 ? 'gain' : 'drop'} of ${Math.abs(avgChange).toFixed(1)}%.`,
-                        tickers: tickers
-                    };
-                });
+                // Try Vercel API first
+                let data = await fetchJson('https://foliotrack-api.vercel.app/api/market-summary');
+                
+                // Fallback to local API
+                if (!data || !data.sectors) {
+                    data = await fetchJson('/api/market-summary');
+                }
 
-                // Order by most dropped first (lowest avgChange)
-                marketSummaryData = rawData.sort((a, b) => a.avgChange - b.avgChange);
+                if (data && data.sectors) {
+                    marketSummaryData = data.sectors.sort((a, b) => a.avgChange - b.avgChange);
+                }
             } catch (error) {
                 console.error("Error fetching market summary:", error);
             } finally {
@@ -811,10 +803,60 @@
             lucide.createIcons();
         }
 
-        function refreshPrices(portfolioId) {
+        async function refreshPrices(portfolioId) {
             const p = portfolios.find(p => p.id === portfolioId);
             if (!p) return;
 
+            if (useLivePrice || eodSource === 'google') {
+                const symbols = p.holdings.map(h => convertSymbolForYahoo(h.symbol)).filter(s => s);
+                if (symbols.length > 0) {
+                    try {
+                        const prices = {};
+                        // Fetch from Vercel one by one as requested
+                        for (const s of symbols) {
+                            try {
+                                const res = await fetchJson(`https://my-api-backend.vercel.app/api/data?symbol=${s}`);
+                                if (res && res.price) {
+                                    prices[s] = res.price;
+                                }
+                            } catch (e) {
+                                console.error(`Error fetching ${s} from Vercel:`, e);
+                            }
+                        }
+                        
+                        // Fallback to local API for missing symbols
+                        const missing = symbols.filter(s => !prices[s]);
+                        if (missing.length > 0) {
+                            const localData = await fetchJson(`/api/prices?symbols=${missing.join(',')}`);
+                            if (localData && localData.prices) {
+                                Object.assign(prices, localData.prices);
+                            }
+                        }
+
+                        if (Object.keys(prices).length > 0) {
+                            p.holdings.forEach(h => {
+                                const yahooSym = convertSymbolForYahoo(h.symbol);
+                                const price = prices[yahooSym];
+                                if (price !== undefined) {
+                                    if (useLivePrice) {
+                                        h.currentPrice = price;
+                                    } else if (eodSource === 'google') {
+                                        h.googleEodPrice = price;
+                                    }
+                                }
+                            });
+                            savePortfolios();
+                            render();
+                            console.log(`Prices refreshed for ${p.name} via API`);
+                            return;
+                        }
+                    } catch (error) {
+                        console.error('Error fetching prices from API:', error);
+                    }
+                }
+            }
+
+            // Fallback to simulation if API fails or not applicable
             p.holdings.forEach(h => {
                 const fluctuation = 1 + (Math.random() * 0.04 - 0.02); // +/- 2%
                 if (useLivePrice) {
@@ -826,13 +868,72 @@
 
             savePortfolios();
             render();
-            console.log(`Prices refreshed for ${p.name}`);
+            console.log(`Prices refreshed for ${p.name} (simulated)`);
         }
 
-        function refreshAllPrices() {
+        async function refreshAllPrices() {
             // Auto-refresh if using live prices OR google EOD prices
             if (!useLivePrice && eodSource !== 'google') return;
             
+            const allSymbols = new Set();
+            portfolios.forEach(p => {
+                p.holdings.forEach(h => {
+                    const s = convertSymbolForYahoo(h.symbol);
+                    if (s) allSymbols.add(s);
+                });
+            });
+
+            if (allSymbols.size > 0) {
+                try {
+                    const symbolsArray = Array.from(allSymbols);
+                    const prices = {};
+                    
+                    // Fetch from Vercel one by one as requested
+                    for (const s of symbolsArray) {
+                        try {
+                            const res = await fetchJson(`https://my-api-backend.vercel.app/api/data?symbol=${s}`);
+                            if (res && res.price) {
+                                prices[s] = res.price;
+                            }
+                        } catch (e) {
+                            console.error(`Error fetching ${s} from Vercel:`, e);
+                        }
+                    }
+
+                    // Fallback to local API for missing symbols
+                    const missing = symbolsArray.filter(s => !prices[s]);
+                    if (missing.length > 0) {
+                        const localData = await fetchJson(`/api/prices?symbols=${missing.join(',')}`);
+                        if (localData && localData.prices) {
+                            Object.assign(prices, localData.prices);
+                        }
+                    }
+
+                    if (Object.keys(prices).length > 0) {
+                        portfolios.forEach(p => {
+                            p.holdings.forEach(h => {
+                                const yahooSym = convertSymbolForYahoo(h.symbol);
+                                const price = prices[yahooSym];
+                                if (price !== undefined) {
+                                    if (useLivePrice) {
+                                        h.currentPrice = price;
+                                    } else if (eodSource === 'google') {
+                                        h.googleEodPrice = price;
+                                    }
+                                }
+                            });
+                        });
+                        savePortfolios();
+                        render();
+                        console.log('Auto-refreshed prices via API.');
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Error auto-refreshing prices from API:', error);
+                }
+            }
+
+            // Fallback to simulation
             let changed = false;
             portfolios.forEach(p => {
                 p.holdings.forEach(h => {
@@ -850,7 +951,7 @@
             if (changed) {
                 savePortfolios();
                 render();
-                console.log('Auto-refreshed prices based on current selection.');
+                console.log('Auto-refreshed prices (simulated).');
             }
         }
 
@@ -1096,7 +1197,7 @@
                             ${!useLivePrice ? `
                                 <div class="flex bg-slate-100 p-1 rounded-xl">
                                     <button onclick="setEodSource('csv')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all ${eodSource === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">CSV Purchase Price</button>
-                                    <button onclick="setEodSource('google')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">Google Last Close</button>
+                                    <button onclick="setEodSource('google')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">Yahoo Last Close</button>
                                 </div>
                             ` : ''}
                         </div>
@@ -1359,7 +1460,7 @@
                             ${!useLivePrice ? `
                                 <div class="flex bg-slate-100 p-1 rounded-xl">
                                     <button onclick="setEodSource('csv')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">CSV</button>
-                                    <button onclick="setEodSource('google')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">Google</button>
+                                    <button onclick="setEodSource('google')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">Yahoo</button>
                                 </div>
                             ` : ''}
                         </div>
@@ -1386,7 +1487,7 @@
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Strategy</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Currency</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">CSV Price</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Google EOD</th>
+                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Yahoo EOD</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Current Price</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Book FX</th>
                                         <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Market FX</th>
@@ -1928,83 +2029,5 @@
         fetchMarketSummary();
         render();
     </script>
-
-<script>
-/* ===== Live pricing via Vercel (single loader + cache) ===== */
-
-const VERCEL_API_BASE = "https://my-api-backend.vercel.app/api/data"; 
-
-const priceCache = {};
-const CACHE_MS = 5 * 60 * 1000;
-
-async function getPrice(symbol){
-  const now = Date.now();
-  if(priceCache[symbol] && now - priceCache[symbol].t < CACHE_MS){
-    return priceCache[symbol].p;
-  }
-  const r = await fetch(`${VERCEL_API_BASE}?symbol=${symbol}`);
-  const j = await r.json();
-  const p = Number(j.price);
-  priceCache[symbol] = {p:p,t:now};
-  return p;
-}
-
-async function loadAllPrices(){
-  if(typeof MARKET_DATA === "undefined") return;
-
-  const symbols = [...new Set(MARKET_DATA.flatMap(s => s.tickers))];
-
-  const priceMap = {};
-
-  for(const s of symbols){
-    try{
-      const p = await getPrice(s);
-      priceMap[s] = p;
-      console.log("Updated:", s, p);
-    }catch(e){
-      console.warn("price fail", s);
-    }
-  }
-
-  window.priceMap = priceMap;
-
-  if(typeof marketSummaryData !== "undefined"){
-    marketSummaryData.forEach(sec=>{
-      sec.tickers.forEach(t=>{
-        if(priceMap[t.symbol]) t.price = priceMap[t.symbol];
-      });
-    });
-  }
-
-  if(typeof render === "function"){
-    render();
-  }
-
-  injectPricesToDOM();
-}
-
-function injectPricesToDOM(){
-  if(!window.priceMap) return;
-
-  const nodes = document.querySelectorAll("*");
-  nodes.forEach(n=>{
-    if(!n.children.length && n.textContent){
-      const t = n.textContent.trim();
-      if(window.priceMap[t]){
-        const span = document.createElement("span");
-        span.textContent = " " + window.priceMap[t];
-        span.style.marginLeft = "6px";
-        span.style.fontWeight = "600";
-        n.appendChild(span);
-      }
-    }
-  });
-}
-
-document.addEventListener("DOMContentLoaded",()=>{
-  setTimeout(loadAllPrices,1000);
-});
-</script>
-
 </body>
 </html>
