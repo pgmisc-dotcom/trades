@@ -404,7 +404,7 @@
 
             try {
                 // Try Vercel API first
-                let data = await fetchJson('https://foliotrack-api.vercel.app/api/market-summary');
+                let data = await fetchJson('https://my-api-backend.vercel.app/api/market-summary');
                 
                 // Fallback to local API
                 if (!data || !data.sectors) {
