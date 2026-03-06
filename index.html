@@ -1930,80 +1930,172 @@
     </script>
 
 <script>
-/* ===== Live pricing via Vercel (single loader + cache) ===== */
+/* ===== Portfolio Import Logic V2 (sheet-driven) ===== */
 
-const VERCEL_API_BASE = "https://my-api-backend.vercel.app/api/data"; 
+function getPortfolioDefinitions(portfoliosSheet){
+
+  const portfolios = [];
+  const masters = {};
+
+  portfoliosSheet.forEach(row=>{
+
+    const name = row["PortfolioName"] || row["Portfolio"] || row["Name"];
+    const subs = row["Sub-Portfolios"] || row["SubPortfolios"] || row["ColumnK"];
+
+    if(!name) return;
+
+    if(!subs){
+      portfolios.push(name);
+    }else{
+      masters[name] = subs.split("|").map(s=>s.trim()).filter(Boolean);
+    }
+
+  });
+
+  return {portfolios, masters};
+}
+
+function importPortfolioTrades(sheetName, rows){
+
+  const trades = [];
+  const cash = [];
+
+  rows.forEach(row=>{
+
+    const ticker = row["Ticker"] || row["Symbol"];
+    if(!ticker) return;
+
+    if(ticker === "Cash"){
+
+      cash.push({
+        portfolio: sheetName,
+        currency: row["Currency"],
+        value: Number(row["Market Value"] || row["Value"] || 0)
+      });
+
+    }else{
+
+      trades.push({
+        portfolio: sheetName,
+        symbol: ticker,
+        quantity: Number(row["Quantity"] || 0),
+        price: Number(row["Book Cost"] || row["Price"] || 0),
+        currency: row["Currency"]
+      });
+
+    }
+
+  });
+
+  return {trades, cash};
+}
+
+function buildMasterPortfolio(name, subs, portfolioData){
+
+  const result = {name, trades:[], cash:[]};
+
+  subs.forEach(sub=>{
+
+    const p = portfolioData[sub];
+    if(!p) return;
+
+    result.trades.push(...p.trades);
+    result.cash.push(...p.cash);
+
+  });
+
+  return result;
+}
+
+async function importAllPortfolios(workbook){
+
+  const portfoliosSheet = workbook["Portfolios"];
+
+  if(!portfoliosSheet){
+    console.warn("Portfolios sheet missing");
+    return {};
+  }
+
+  const {portfolios, masters} = getPortfolioDefinitions(portfoliosSheet);
+
+  const portfolioData = {};
+
+  portfolios.forEach(name=>{
+
+    const rows = workbook[name];
+    if(!rows){
+      console.warn("Sheet missing:", name);
+      return;
+    }
+
+    portfolioData[name] = importPortfolioTrades(name, rows);
+
+  });
+
+  Object.entries(masters).forEach(([name, subs])=>{
+
+    portfolioData[name] = buildMasterPortfolio(name, subs, portfolioData);
+
+  });
+
+  console.log("Imported portfolios:", portfolioData);
+
+  return portfolioData;
+}
+</script>
+
+
+<script>
+/* ===== Live Price Loader via Backend API ===== */
+
+const PRICE_API_BASE = "https://my-api-backend.vercel.app/api/data";
 
 const priceCache = {};
-const CACHE_MS = 5 * 60 * 1000;
+const CACHE_MS = 60000;
 
-async function getPrice(symbol){
+async function fetchPrice(symbol){
   const now = Date.now();
+
   if(priceCache[symbol] && now - priceCache[symbol].t < CACHE_MS){
     return priceCache[symbol].p;
   }
-  const r = await fetch(`${VERCEL_API_BASE}?symbol=${symbol}`);
-  const j = await r.json();
-  const p = Number(j.price);
-  priceCache[symbol] = {p:p,t:now};
-  return p;
+
+  const res = await fetch(`${PRICE_API_BASE}?symbol=${symbol}`);
+  const json = await res.json();
+
+  const price = Number(json.price);
+
+  priceCache[symbol] = {p:price, t:now};
+
+  return price;
 }
 
-async function loadAllPrices(){
-  if(typeof MARKET_DATA === "undefined") return;
+async function updatePortfolioPrices(portfolioData){
 
-  const symbols = [...new Set(MARKET_DATA.flatMap(s => s.tickers))];
+  for(const name in portfolioData){
 
-  const priceMap = {};
+    const p = portfolioData[name];
 
-  for(const s of symbols){
-    try{
-      const p = await getPrice(s);
-      priceMap[s] = p;
-      console.log("Updated:", s, p);
-    }catch(e){
-      console.warn("price fail", s);
+    for(const trade of p.trades){
+
+      try{
+        const price = await fetchPrice(trade.symbol);
+        trade.currentPrice = price;
+      }catch(e){
+        console.warn("price fetch failed", trade.symbol);
+      }
+
     }
+
   }
 
-  window.priceMap = priceMap;
-
-  if(typeof marketSummaryData !== "undefined"){
-    marketSummaryData.forEach(sec=>{
-      sec.tickers.forEach(t=>{
-        if(priceMap[t.symbol]) t.price = priceMap[t.symbol];
-      });
-    });
-  }
+  console.log("Prices updated:", portfolioData);
 
   if(typeof render === "function"){
     render();
   }
-
-  injectPricesToDOM();
 }
 
-function injectPricesToDOM(){
-  if(!window.priceMap) return;
-
-  const nodes = document.querySelectorAll("*");
-  nodes.forEach(n=>{
-    if(!n.children.length && n.textContent){
-      const t = n.textContent.trim();
-      if(window.priceMap[t]){
-        const span = document.createElement("span");
-        span.textContent = " " + window.priceMap[t];
-        span.style.marginLeft = "6px";
-        span.style.fontWeight = "600";
-        n.appendChild(span);
-      }
-    }
-  });
-}
-
-document.addEventListener("DOMContentLoaded",()=>{
-  setTimeout(loadAllPrices,1000);
-});
 </script>
 
 </body>
