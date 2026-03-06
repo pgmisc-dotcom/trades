@@ -207,26 +207,72 @@
             render();
         }
 
-        async function fetchMarketSummary() {
-            if (isMarketLoading) return;
-            isMarketLoading = true;
-            render();
-            try {
-                const sectors = await Promise.all(MARKET_DATA.map(async (sector) => {
-                    const tickers = await Promise.all(sector.tickers.map(async (symbol) => {
-                        try {
-                            const res = await fetch(`${PRICE_API_BASE}?symbol=${symbol}`);
-                            const data = await res.json();
-                            return { symbol, price: Number(data.price), change: 0 };
-                        } catch (e) { return { symbol, price: 0, change: 0 }; }
-                    }));
-                    return { name: sector.sector, status: "Live", tickers };
-                }));
-                marketSummaryData = sectors;
-            } catch (err) { console.error("Market summary error:", err); }
-            isMarketLoading = false;
-            render();
+async function fetchMarketSummary() {
+
+  if (isMarketLoading) return;
+
+  isMarketLoading = true;
+
+  try {
+
+    const sectors = [];
+
+    for (const sector of MARKET_DATA) {
+
+      const tickers = [];
+
+      for (const symbol of sector.tickers) {
+
+        try {
+
+          const res = await fetch(
+            `https://my-api-backend.vercel.app/api/data?symbol=${symbol}`
+          );
+
+          const data = await res.json();
+
+          tickers.push({
+            symbol: symbol,
+            price: Number(data.price),
+            change: 0
+          });
+
+        } catch (err) {
+
+          console.warn("Price fetch failed:", symbol);
+
+          tickers.push({
+            symbol: symbol,
+            price: 0,
+            change: 0
+          });
+
         }
+
+      }
+
+      sectors.push({
+        name: sector.sector,
+        avgChange: 0,
+        status: "Live",
+        trend: "Live pricing",
+        tickers
+      });
+
+    }
+
+    marketSummaryData = sectors;
+
+  } catch (err) {
+
+    console.error("Market summary error:", err);
+
+  }
+
+  isMarketLoading = false;
+
+  render();
+}
 
         function switchTab(id) {
             activeTab = id;
