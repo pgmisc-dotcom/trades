@@ -9,10 +9,17 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        [xl-cloak] { display: none !important; }
+        :root {
+            --bg: #F8FAFC;
+            --ink: #0F172A;
+            --line: #E2E8F0;
+            --f-sans: 'Inter', sans-serif;
+            --f-mono: 'JetBrains Mono', monospace;
+        }
+        body { font-family: var(--f-sans); background-color: var(--bg); color: var(--ink); }
+        [x-cloak] { display: none !important; }
         .chart-container { position: relative; height: 300px; width: 100%; }
         
         @media (max-width: 1024px) {
@@ -20,9 +27,21 @@
             aside { transform: translateX(-100%); transition: transform 0.3s ease; }
             main { margin-left: 0 !important; }
         }
+
+        .data-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr 40px;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--line);
+            transition: background 0.2s ease;
+            align-items: center;
+        }
+        .data-row:hover { background: #F1F5F9; }
+        .col-header { font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; }
+        .data-value { font-family: var(--f-mono); font-size: 13px; letter-spacing: -0.02em; }
     </style>
 </head>
-<body class="bg-[#F8FAFC] text-slate-900 min-h-screen flex">
+<body class="min-h-screen flex">
 
     <!-- Mobile Header -->
     <div class="lg:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-20 px-4 py-3 flex items-center justify-between">
@@ -81,15 +100,6 @@
                     <i data-lucide="upload" class="w-[18px] h-[18px]"></i>
                     Import CSV/Excel
                 </button>
-
-                <button 
-                    id="drive-connect-btn"
-                    onclick="handleGoogleConnect()"
-                    class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-emerald-600 hover:bg-emerald-50 border border-dashed border-emerald-200 transition-all disabled:opacity-50"
-                >
-                    <i data-lucide="cloud" class="w-[18px] h-[18px]"></i>
-                    <span id="drive-btn-text">Connect Google Drive</span>
-                </button>
             </div>
         </nav>
 
@@ -106,29 +116,6 @@
         </div>
     </aside>
 
-    <!-- Drive Modal -->
-    <div id="drive-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
-        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
-                <h3 class="text-xl font-bold text-slate-900">Select File from Drive</h3>
-                <button onclick="closeDriveModal()" class="text-slate-400 hover:text-slate-600">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-            <div class="p-2 max-h-[400px] overflow-y-auto" id="drive-file-list">
-                <!-- Files will be injected here -->
-            </div>
-            <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-                <button 
-                    onclick="logout()"
-                    class="text-xs text-rose-600 font-bold hover:underline"
-                >
-                    Disconnect Google Account
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Main Content -->
     <main class="flex-1 lg:ml-64 p-4 md:p-8 lg:p-12 pt-20 lg:pt-12">
         <header class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
@@ -137,12 +124,15 @@
                 <h3 class="text-2xl font-bold text-slate-900" id="header-title">Financial Overview</h3>
             </div>
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-                <div class="relative flex-1">
-                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size="18"></i>
-                    <input type="text" placeholder="Search assets..." class="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all w-full md:w-64">
+                <div class="bg-white border border-slate-200 rounded-xl px-4 py-2 flex items-center gap-3 shadow-sm">
+                    <span class="text-xs font-bold text-slate-500">Valuation:</span>
+                    <div class="flex bg-slate-100 p-1 rounded-lg">
+                        <button onclick="setValuation('eod')" id="val-eod" class="px-3 py-1 text-[10px] font-bold rounded-md transition-all bg-white text-slate-900 shadow-sm">EOD</button>
+                        <button onclick="setValuation('live')" id="val-live" class="px-3 py-1 text-[10px] font-bold rounded-md transition-all text-slate-500 hover:text-slate-700">LIVE</button>
+                    </div>
                 </div>
-                <button class="bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors whitespace-nowrap">
-                    Export Report
+                <button onclick="clearAllData()" class="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="Clear All Data">
+                    <i data-lucide="trash-2" size="20"></i>
                 </button>
             </div>
         </header>
@@ -153,762 +143,160 @@
     </main>
 
     <input type="file" id="csv-input" accept=".csv,.xlsx,.xls" class="hidden" onchange="handleFileUpload(event)">
-    <input type="file" id="strategy-csv-input" accept=".csv,.xlsx,.xls" class="hidden" onchange="handleStrategyFileUpload(event)">
 
     <script>
+        // --- Constants ---
         const TICKER_NAMES = {
-            'AMZN.US': 'Amazon.com, Inc.',
-            'AAPL.US': 'Apple Inc.',
-            'GOOG.US': 'Alphabet Inc.',
-            'TSLA.US': 'Tesla, Inc.',
-            'MSFT.US': 'Microsoft Corporation',
-            'NVDA.US': 'NVIDIA Corporation',
-            'META.US': 'Meta Platforms, Inc.',
-            'V.US': 'Visa Inc.',
-            'JPM.US': 'JPMorgan Chase & Co.',
-            'GS.US': 'The Goldman Sachs Group, Inc.',
-            'HSBA.LSE': 'HSBC Holdings plc',
-            'BARC.LSE': 'Barclays PLC',
-            'LLOY.LSE': 'Lloyds Banking Group plc',
-            'BP.LSE': 'BP p.l.c.',
-            'AZN.LSE': 'AstraZeneca PLC',
-            'GSK.LSE': 'GSK plc',
-            'SHEL.LSE': 'Shell plc',
-            'ULVR.LSE': 'Unilever PLC',
-            'RIO.LSE': 'Rio Tinto Group',
-            'GLEN.LSE': 'Glencore plc',
-            'AMZN': 'Amazon.com, Inc.',
-            'AAPL': 'Apple Inc.',
-            'GOOG': 'Alphabet Inc.',
-            'TSLA': 'Tesla, Inc.',
-            'MSFT': 'Microsoft Corporation',
-            'NVDA': 'NVIDIA Corporation'
+            'AMZN.US': 'Amazon.com, Inc.', 'AAPL.US': 'Apple Inc.', 'GOOG.US': 'Alphabet Inc.',
+            'TSLA.US': 'Tesla, Inc.', 'MSFT.US': 'Microsoft Corporation', 'NVDA.US': 'NVIDIA Corporation',
+            'META.US': 'Meta Platforms, Inc.', 'V.US': 'Visa Inc.', 'JPM.US': 'JPMorgan Chase & Co.',
+            'GS.US': 'The Goldman Sachs Group, Inc.', 'HSBA.LSE': 'HSBC Holdings plc',
+            'BARC.LSE': 'Barclays PLC', 'LLOY.LSE': 'Lloyds Banking Group plc', 'BP.LSE': 'BP p.l.c.',
+            'AZN.LSE': 'AstraZeneca PLC', 'GSK.LSE': 'GSK plc', 'SHEL.LSE': 'Shell plc',
+            'ULVR.LSE': 'Unilever PLC', 'RIO.LSE': 'Rio Tinto Group', 'GLEN.LSE': 'Glencore plc'
         };
+
+        const MARKET_DATA = [
+            { sector: "Tech", tickers: ["AAPL.US", "MSFT.US", "GOOG.US", "NVDA.US", "AMZN.US"] },
+            { sector: "Financials", tickers: ["JPM.US", "GS.US", "V.US", "HSBA.LSE", "BARC.LSE"] },
+            { sector: "Energy", tickers: ["XOM.US", "CVX.US", "BP.LSE", "SHEL.LSE"] },
+            { sector: "Healthcare", tickers: ["AZN.LSE", "GSK.LSE", "JNJ.US", "PFE.US"] }
+        ];
 
         // --- State ---
         let activeTab = 'summary';
-        let useLivePrice = JSON.parse(localStorage.getItem('foliotrack_use_live_price')) || false;
-        let eodSource = localStorage.getItem('foliotrack_eod_source') || 'csv';
-        let sortConfig = { key: 'symbol', direction: 'asc' };
-        let chartInstance = null;
-        let sectorChartInstance = null;
-
-        const INITIAL_PORTFOLIOS = [];
-
-        let portfolios = JSON.parse(localStorage.getItem('foliotrack_portfolios')) || INITIAL_PORTFOLIOS;
-        let strategyMappings = JSON.parse(localStorage.getItem('foliotrack_strategies')) || [];
-        let selectedExposureSector = null;
-        let selectedExposurePortfolio = null;
-
-        let isGoogleAuthenticated = false;
-        let isDemoMode = false;
-        let userData = null;
-        let isDriveModalOpen = false;
-        let driveFiles = [];
-        let isDriveLoading = false;
-
-        // Helper for robust number parsing
-        function parseNumber(val, defaultVal = 0) {
-            if (val === undefined || val === null || val === '') return defaultVal;
-            // Remove currency symbols, commas, etc.
-            const cleaned = String(val).replace(/[^0-9.-]/g, '');
-            const num = parseFloat(cleaned);
-            return isNaN(num) ? defaultVal : num;
-        }
-
-        // Helper for safe JSON fetching
-        async function fetchJson(url, options = {}) {
-            try {
-                const response = await fetch(url, options);
-                const text = await response.text();
-                
-                let data;
-                const contentType = response.headers.get('content-type');
-                
-                if (contentType && contentType.includes('application/json')) {
-                    try {
-                        data = JSON.parse(text);
-                    } catch (e) {
-                        console.error('JSON Parse Error. Raw response:', text);
-                        throw new Error(`Invalid JSON response from ${url}. See console for details.`);
-                    }
-                }
-
-                if (!response.ok) {
-                    const errorMsg = (data && data.error) || `Server error ${response.status}: ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`;
-                    throw new Error(errorMsg);
-                }
-
-                if (data !== undefined) return data;
-                
-                // If we expected JSON but didn't get it
-                if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-                    throw new Error('Received HTML instead of JSON. The server might be restarting or the API route is incorrect.');
-                }
-                
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    return text;
-                }
-            } catch (error) {
-                console.error(`Fetch error for ${url}:`, error);
-                throw error;
-            }
-        }
-
-        async function fetchUserData() {
-            try {
-                const data = await fetchJson('/api/auth/google/user');
-                isGoogleAuthenticated = data.isAuthenticated;
-                isDemoMode = !!data.isDemo;
-                userData = data.isAuthenticated ? data.user : null;
-                render();
-            } catch (error) {
-                console.error('Error fetching user data:', error);
-            }
-        }
-
-        async function handleGoogleConnect() {
-            if (isGoogleAuthenticated) {
-                fetchDriveFiles();
-                return;
-            }
-            
-            const authWindow = window.open('about:blank', 'google_auth', 'width=600,height=700');
-            if (!authWindow) {
-                alert('Please allow popups to connect your Google account.');
-                return;
-            }
-            authWindow.document.write('<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#F8FAFC;"><div style="width:40px;height:40px;border:4px solid #E2E8F0;border-top:4px solid #4F46E5;border-radius:50%;animation:spin 1s linear infinite;"></div><p style="margin-top:20px;color:#475569;font-weight:600;">Connecting to Google...</p><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style></div>');
-
-            try {
-                const data = await fetchJson('/api/auth/google/url');
-                authWindow.location.href = data.url;
-            } catch (error) {
-                console.error('Error connecting to Google:', error);
-                authWindow.close();
-                alert(`Failed to initiate Google connection: ${error.message}`);
-            }
-        }
-
-        async function fetchDriveFiles() {
-            isDriveLoading = true;
-            render();
-            try {
-                const data = await fetchJson('/api/drive/files');
-                if (data.files) {
-                    driveFiles = data.files;
-                    isDriveModalOpen = true;
-                }
-            } catch (error) {
-                console.error('Error fetching drive files:', error);
-                alert(`Failed to fetch Drive files: ${error.message}`);
-            } finally {
-                isDriveLoading = false;
-                render();
-            }
-        }
-
-        async function handleDriveFileSelect(fileId) {
-            isDriveLoading = true;
-            render();
-            try {
-                const data = await fetchJson(`/api/drive/file/${fileId}`);
-                if (data.content) {
-                    Papa.parse(data.content, {
-                        header: false,
-                        skipEmptyLines: true,
-                        complete: (results) => {
-                            processCsvData(results.data);
-                            isDriveModalOpen = false;
-                            render();
-                        }
-                    });
-                }
-            } catch (error) {
-                console.error('Error fetching drive file:', error);
-                alert(`Failed to fetch file content: ${error.message}`);
-            } finally {
-                isDriveLoading = false;
-                render();
-            }
-        }
-
-        async function logout() {
-            try {
-                await fetchJson('/api/auth/google/logout', { method: 'POST' });
-                isGoogleAuthenticated = false;
-                userData = null;
-                isDriveModalOpen = false;
-                render();
-            } catch (error) {
-                console.error('Logout error:', error);
-            }
-        }
-
-        function closeDriveModal() {
-            isDriveModalOpen = false;
-            render();
-        }
-
-        window.addEventListener('message', async (event) => {
-            if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
-                await fetchUserData();
-                // Auto-open drive files after successful login
-                if (isGoogleAuthenticated) {
-                    fetchDriveFiles();
-                }
-            }
-        });
-
-        fetchUserData();
-
-        const MARKET_DATA = [
-          { sector: "Financials - US", tickers: ["XLF.US", "GS.US", "C.US", "BAC.US", "JPM.US", "WFC.US", "BK.US", "WRB.US", "BRK-A.US", "SXLF.LSE", "V.US"] },
-          { sector: "Financials - UK", tickers: ["HSBA.LSE", "BARC.LSE", "LLOY.LSE", "LGEN.LSE", "AV.LSE", "NWG.LSE", "JUP.LSE", "PRU.LSE"] },
-          { sector: "Tech", tickers: ["XLK.US", "AAPL.US", "GOOG.US", "TSLA.US", "MSFT.US", "AMZN.US", "EQQQ.LSE", "NVDA.US", "AMD.US", "INTC.US", "AVGO.US", "TWTR.US", "FB.US", "ORCL.US"] },
-          { sector: "Energy", tickers: ["XLE.US", "HAL.US", "BP.LSE", "RDSB.LSE", "OXY.US", "XOM.US", "PXD.US", "EOG.US", "BKR.US", "SLB.US", "COP.US", "CLR.US", "RRC.US", "LNG.US", "SXLE.LSE", "WNRG.LSE", "CVX.US"] },
-          { sector: "Emerging Markets", tickers: ["CNYA.LSE", "IKOR.LSE", "NDIA.LSE", "ITWN.LSE", "CRU1.LSE", "IPOL.LSE", "IBZL.LSE", "EMIM.LSE", "IEER.LSE", "IIND.LSE", "FXC.LSE", "LTAM.LSE"] },
-          { sector: "Consumer Discretionary - US", tickers: ["XLY.US", "SBUX.US", "DAL.US", "LVS.US", "F.US", "G.US", "SAVE.US", "AAL.US", "DIS.US", "MGM.US"] },
-          { sector: "Consumer Discretionary - UK", tickers: ["IHG.LSE", "CPG.LSE", "JET2.LSE", "EZJ.LSE", "WTB.LSE", "CCL.LSE", "FGP.LSE", "NEX.LSE", "MAB.LSE", "YNGN.LSE"] },
-          { sector: "Industrials", tickers: ["XLI.US", "CAT.US", "X.US", "GE.US", "BA.US", "XLB.US", "HON.US", "FCX.US", "DOW.US", "UPS.US", "SXLI.LSE"] },
-          { sector: "Europe", tickers: ["FTSE.INDX", "FCHI.INDX", "EWN.US", "GDAXI.INDX", "FTMC.INDX", "IBEX.INDX", "EWQ.US", "ENOR.US", "SPMIB.INDX"] },
-          { sector: "US Indices", tickers: ["GSPC.INDX", "DJI.INDX", "IXIC.INDX", "RUT.INDX"] },
-          { sector: "Developed Asia", tickers: ["N225.INDX", "SSEC.INDX", "AXJO.INDX", "VAPX.LSE", "STI.INDX", "HSI.INDX", "HKOR.LSE"] },
-          { sector: "Bitcoin", tickers: ["ETH-USD.CC", "BTC-USD.CC", "MSTR.US", "SQ.US", "COIN.US", "IBIT.US", "KOIP.LSE", "BCHS.LSE", "DAGB.LSE", "WETP.LSE", "IB1T.LSE"] },
-          { sector: "Commodities", tickers: ["C.COMM", "BZ.COMM", "GC.COMM", "HG.COMM", "NG.COMM", "SI.COMM", "PL.COMM", "SB.COMM", "CL.COMM"] },
-          { sector: "Healthcare", tickers: ["GSK.LSE", "AZN.LSE", "PFI.US", "MRNA.US", "MDT.US", "CVS.US", "JNJ.US", "IHCU.LSE"] },
-          { sector: "Real Estate", tickers: ["PSN.LSE", "HMSO.LSE", "TW.LSE", "PURP.LSE", "RMV.LSE", "BDEV.LSE", "BWY.LSE"] },
-          { sector: "Volatility", tickers: ["VIX.INDX", "VVIX.INDX", "VX.INDX", "VXN.INDX", "OVX.INDX", "VXXLE.INDX", "RVX.INDX", "GVZ.INDX"] },
-          { sector: "Bonds", tickers: ["TLT.US", "TBT.US", "HYG.US", "UK10Y.GBOND", "US10Y.GBOND", "IHYG.LSE", "US2Y.INDX", "US30Y.INDX", "US10Y.INDX"] }
-        ];
-
+        let valuationMode = 'eod';
+        let portfolios = JSON.parse(localStorage.getItem('ft_portfolios')) || [];
+        let livePrices = {};
+        let isPriceLoading = false;
         let marketSummaryData = [];
         let isMarketLoading = false;
-        let selectedSector = null;
+        let chartInstance = null;
 
-       async function fetchMarketSummary() {
-
-  if (isMarketLoading) return;
-
-  isMarketLoading = true;
-  render();
-
-  try {
-
-    const sectors = [];
-
-    for (const sector of MARKET_DATA) {
-
-      const tickers = [];
-
-      for (const symbol of sector.tickers) {
-
-        try {
-
-          const res = await fetch(
-            `https://my-api-backend.vercel.app/api/data?symbol=${symbol}`
-          );
-
-          const data = await res.json();
-
-          tickers.push({
-            symbol: symbol,
-            price: Number(data.price),
-            change: 0
-          });
-
-        } catch (err) {
-
-          console.warn("Price fetch failed:", symbol);
-
-          tickers.push({
-            symbol: symbol,
-            price: 0,
-            change: 0
-          });
-
-        }
-
-      }
-
-      sectors.push({
-        name: sector.sector,
-        avgChange: 0,
-        status: "Live",
-        trend: "Live pricing",
-        tickers
-      });
-
-    }
-
-    marketSummaryData = sectors;
-
-  } catch (err) {
-
-    console.error("Market summary error:", err);
-
-  }
-
-  isMarketLoading = false;
-
-  render();
-}
-
-        function toggleSector(name) {
-            selectedSector = selectedSector === name ? null : name;
-            render();
-        }
-
-        function toggleLivePrice() {
-            useLivePrice = !useLivePrice;
-            localStorage.setItem('foliotrack_use_live_price', JSON.stringify(useLivePrice));
-            render();
-        }
-
-        function toggleEodSource() {
-            eodSource = eodSource === 'csv' ? 'google' : 'csv';
-            localStorage.setItem('foliotrack_eod_source', eodSource);
-            render();
-        }
-
-        function setEodSource(source) {
-            eodSource = source;
-            localStorage.setItem('foliotrack_eod_source', eodSource);
-            render();
-        }
-
-        function updatePrice(portfolioId, symbol, price) {
-            portfolios = portfolios.map(p => {
-                if (p.id === portfolioId) {
-                    return {
-                        ...p,
-                        holdings: p.holdings.map(h => {
-                            if (h.symbol === symbol) {
-                                return { ...h, currentPrice: price };
-                            }
-                            return h;
-                        })
-                    };
-                }
-                return p;
-            });
-            savePortfolios();
-            render();
-        }
-
-        function savePortfolios() {
-            localStorage.setItem('foliotrack_portfolios', JSON.stringify(portfolios));
-        }
-
-        function saveStrategies() {
-            localStorage.setItem('foliotrack_strategies', JSON.stringify(strategyMappings));
-        }
+        const PRICE_API_BASE = "https://my-api-backend.vercel.app/api/data";
 
         // --- Utilities ---
-        const formatCurrency = (value, decimals = 2) => {
-            return new Intl.NumberFormat('en-GB', {
-                style: 'currency',
-                currency: 'GBP',
-                minimumFractionDigits: decimals,
-                maximumFractionDigits: decimals,
-            }).format(value);
-        };
-
-        const formatPercent = (value) => {
-            return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+        const formatCurrency = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(val);
+        const parseNum = (val) => {
+            if (!val) return 0;
+            const n = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
+            return isNaN(n) ? 0 : n;
         };
 
         // --- Core Logic ---
-        function switchTab(tabId) {
-            activeTab = tabId;
-            if (window.innerWidth < 1024) {
-                toggleSidebar();
-            }
+        async function fetchLivePrice(symbol) {
+            try {
+                const res = await fetch(`${PRICE_API_BASE}?symbol=${symbol}`);
+                const data = await res.json();
+                if (data && data.price) {
+                    livePrices[symbol] = parseFloat(data.price);
+                    return true;
+                }
+            } catch (err) { console.warn(`Price fetch failed: ${symbol}`); }
+            return false;
+        }
+
+        async function refreshAllLivePrices() {
+            if (isPriceLoading) return;
+            const symbols = [...new Set(portfolios.flatMap(p => p.holdings.map(h => h.symbol)))];
+            if (symbols.length === 0) return;
+            isPriceLoading = true;
+            render();
+            await Promise.all(symbols.map(s => fetchLivePrice(s)));
+            isPriceLoading = false;
+            render();
+        }
+
+        async function fetchMarketSummary() {
+            if (isMarketLoading) return;
+            isMarketLoading = true;
+            render();
+            try {
+                const sectors = await Promise.all(MARKET_DATA.map(async (sector) => {
+                    const tickers = await Promise.all(sector.tickers.map(async (symbol) => {
+                        try {
+                            const res = await fetch(`${PRICE_API_BASE}?symbol=${symbol}`);
+                            const data = await res.json();
+                            return { symbol, price: Number(data.price), change: 0 };
+                        } catch (e) { return { symbol, price: 0, change: 0 }; }
+                    }));
+                    return { name: sector.sector, status: "Live", tickers };
+                }));
+                marketSummaryData = sectors;
+            } catch (err) { console.error("Market summary error:", err); }
+            isMarketLoading = false;
+            render();
+        }
+
+        function switchTab(id) {
+            activeTab = id;
+            if (window.innerWidth < 1024) toggleSidebar();
+            render();
+        }
+
+        function setValuation(mode) {
+            valuationMode = mode;
+            if (mode === 'live') refreshAllLivePrices();
             render();
         }
 
         function toggleSidebar() {
             document.body.classList.toggle('sidebar-open');
-            const overlay = document.getElementById('sidebar-overlay');
-            overlay.classList.toggle('hidden');
-        }
-
-        function handleStrategyFileUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
-
-            if (isExcel) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-                    processStrategyData(rawData);
-                };
-                reader.readAsArrayBuffer(file);
-            } else {
-                Papa.parse(file, {
-                    header: false,
-                    skipEmptyLines: true,
-                    complete: (results) => {
-                        processStrategyData(results.data);
-                    },
-                    error: (error) => {
-                        console.error('Strategy CSV Parsing Error:', error);
-                        alert('Failed to parse Strategy CSV.');
-                    }
-                });
-            }
-            event.target.value = '';
-        }
-
-        function processStrategyData(rawData) {
-            if (rawData.length === 0) return;
-
-            let codeIdx = 0;
-            let sectorIdx = 1;
-
-            const firstRow = rawData[0].map(c => String(c).toLowerCase().trim());
-            const hasHeaders = firstRow.some(c => c.includes('code') || c.includes('sector') || c.includes('strategy') || c.includes('industry'));
-
-            if (hasHeaders) {
-                const cIdx = firstRow.findIndex(c => c.includes('code') || c.includes('strategy'));
-                const sIdx = firstRow.findIndex(c => c.includes('sector') || c.includes('industry'));
-                if (cIdx !== -1) codeIdx = cIdx;
-                if (sIdx !== -1) sectorIdx = sIdx;
-                else if (rawData[0].length >= 2) {
-                    sectorIdx = codeIdx === 0 ? 1 : 0;
-                    if (rawData[0].length === 4 && sectorIdx === 1) sectorIdx = 3;
-                }
-            } else {
-                codeIdx = 0;
-                sectorIdx = rawData[0].length === 4 ? 3 : 1;
-            }
-
-            const startIdx = hasHeaders ? 1 : 0;
-            const newMappings = [];
-
-            for (let i = startIdx; i < rawData.length; i++) {
-                const row = rawData[i];
-                if (!row || row.length < 2) continue;
-                const code = row[codeIdx]?.trim();
-                const sector = row[sectorIdx]?.trim();
-                
-                if (code && sector) {
-                    newMappings.push({ code, sector });
-                }
-            }
-            
-            strategyMappings = newMappings;
-            saveStrategies();
-            alert(`Successfully imported ${newMappings.length} strategy mappings.`);
-            render();
-        }
-
-        function processCsvData(rawData, cashMap = {}, nameMap = {}) {
-            if (rawData.length === 0) return;
-
-            const startIdx = (isNaN(parseFloat(rawData[0][2])) && isNaN(parseFloat(rawData[0][3]))) ? 1 : 0;
-            const portfoliosMap = {};
-            
-            // Deduplication signature set
-            const existingSignatures = new Set();
-            portfolios.forEach(p => {
-                p.holdings.forEach(h => {
-                    (h.trades || []).forEach(t => {
-                        existingSignatures.add(`${p.name}|${h.symbol}|${t.shares}|${t.price}|${t.date}`);
-                    });
-                });
-            });
-
-            let newRowsAdded = 0;
-
-            for (let i = startIdx; i < rawData.length; i++) {
-                const row = rawData[i];
-                if (row.length < 2) continue;
-
-                const portfolioName = row[0]?.trim() || 'Imported';
-                const symbol = row[1]?.trim() || 'UNKNOWN';
-                const shares = parseNumber(row[2]);
-                const price = parseNumber(row[14]); // Using Column O (index 14) as requested
-                const currency = row[4]?.trim() || 'GBP';
-                const bookFxRate = parseNumber(row[15], 1); // Column P
-                const marketFxRate = parseNumber(row[16], 1); // Column Q
-                const date = row[6]?.trim() || 'N/A';
-                const strategy = row[12]?.trim() || 'N/A';
-                
-                const longName = nameMap[symbol.toUpperCase()] || 
-                                 nameMap[symbol.toUpperCase().split('.')[0]] ||
-                                 TICKER_NAMES[symbol.toUpperCase()] || 
-                                 TICKER_NAMES[symbol.toUpperCase().split('.')[0]] ||
-                                 symbol;
-                
-                let adjustedPrice = price;
-                if (currency === 'GBp') adjustedPrice = price / 100;
-                
-                // Use marketFxRate (Column Q) to determine a US stock's value as requested
-                const isUS = symbol.toUpperCase().endsWith('.US');
-                const isLSE = symbol.toUpperCase().endsWith('.LSE');
-                
-                if (isUS || (currency !== 'GBP' && currency !== 'GBp')) {
-                    if (marketFxRate && marketFxRate !== 0) {
-                        adjustedPrice = adjustedPrice / marketFxRate;
-                    }
-                }
-                
-                const signature = `${portfolioName}|${symbol}|${shares}|${adjustedPrice}|${date}`;
-                if (existingSignatures.has(signature)) continue;
-
-                newRowsAdded++;
-                const value = shares * adjustedPrice;
-                const trade = { shares, price: adjustedPrice, value, fxRate: bookFxRate, bookFxRate, marketFxRate, currency, date };
-                
-                if (!portfoliosMap[portfolioName]) portfoliosMap[portfolioName] = {};
-                
-                if (portfoliosMap[portfolioName][symbol]) {
-                    const existing = portfoliosMap[portfolioName][symbol];
-                    const totalShares = existing.shares + shares;
-                    const totalValue = existing.value + value;
-                    portfoliosMap[portfolioName][symbol] = {
-                        ...existing,
-                        shares: totalShares,
-                        value: totalValue,
-                        price: totalShares > 0 ? totalValue / totalShares : 0,
-                        fxRate: bookFxRate,
-                        bookFxRate,
-                        marketFxRate,
-                        trades: [...(existing.trades || []), trade]
-                    };
-                } else {
-                    portfoliosMap[portfolioName][symbol] = {
-                        symbol, name: longName, shares, price: adjustedPrice, value, change: 0, allocation: 0, strategy, currency, fxRate: bookFxRate, bookFxRate, marketFxRate,
-                        trades: [trade]
-                    };
-                }
-            }
-
-            if (newRowsAdded === 0 && Object.keys(cashMap).length === 0) {
-                alert('No new unique trades or cash updates found.');
-                return;
-            }
-
-            // Update cash for existing portfolios if present in cashMap
-            Object.entries(cashMap).forEach(([name, cash]) => {
-                const existing = portfolios.find(p => p.name === name);
-                if (existing) {
-                    existing.cash = cash;
-                }
-            });
-
-            Object.entries(portfoliosMap).forEach(([name, symbolMap], pIdx) => {
-                const existingPortfolio = portfolios.find(p => p.name === name);
-                const newHoldings = Object.values(symbolMap);
-                const cash = cashMap[name] || 0;
-
-                if (existingPortfolio) {
-                    existingPortfolio.cash = cash || existingPortfolio.cash;
-                    newHoldings.forEach(newH => {
-                        const existingH = existingPortfolio.holdings.find(h => h.symbol === newH.symbol);
-                        if (existingH) {
-                            const totalShares = existingH.shares + newH.shares;
-                            const totalValue = existingH.value + newH.value;
-                            existingH.shares = totalShares;
-                            existingH.value = totalValue;
-                            existingH.price = totalShares > 0 ? totalValue / totalShares : 0;
-                            existingH.trades = [...(existingH.trades || []), ...newH.trades];
-                        } else {
-                            existingPortfolio.holdings.push(newH);
-                        }
-                    });
-                } else {
-                    portfolios.push({
-                        id: `import-${Date.now()}-${pIdx}`,
-                        name,
-                        color: ['#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f43f5e', '#10b981'][portfolios.length % 6],
-                        holdings: newHoldings,
-                        cash: cash
-                    });
-                }
-            });
-
-            savePortfolios();
-            render();
+            document.getElementById('sidebar-overlay').classList.toggle('hidden');
         }
 
         function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
             reader.onload = (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    
-                    // 1. Process Trades from "Trades Export" sheet
-                    const tradesSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'trades export') || workbook.SheetNames[0];
-                    const tradesSheet = workbook.Sheets[tradesSheetName];
-                    const tradesData = XLSX.utils.sheet_to_json(tradesSheet, { header: 1 });
-                    
-                    console.log(`Processing trades from sheet: ${tradesSheetName}`);
-
-                    // 2. Process Cash and Names from sheets named after portfolios
-                    const cashMap = {};
-                    const nameMap = {};
-                    workbook.SheetNames.forEach(sheetName => {
-                        // Skip the trades sheet
-                        if (sheetName.toLowerCase() === 'trades export') return;
-
-                        const sheet = workbook.Sheets[sheetName];
-                        const sheetData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                        
-                        // Extract Names: Column A is Symbol, Column B is Name
-                        sheetData.forEach(row => {
-                            if (Array.isArray(row) && row.length >= 2) {
-                                const sym = String(row[0]).trim().toUpperCase();
-                                const name = String(row[1]).trim();
-                                // Basic validation to skip headers or empty rows
-                                if (sym && name && sym !== 'SYMBOL' && sym !== 'CODE' && sym !== 'TICKER' && sym !== 'NAME') {
-                                    nameMap[sym] = name;
-                                    // Also store without suffix for easier matching
-                                    const baseSym = sym.split('.')[0];
-                                    if (baseSym && !nameMap[baseSym]) {
-                                        nameMap[baseSym] = name;
-                                    }
-                                }
-                            }
-                        });
-
-                        let cashValue = 0;
-                        // Heuristic: look for "Cash" or "Balance" label
-                        for (const row of sheetData) {
-                            if (!Array.isArray(row)) continue;
-                            const cashIdx = row.findIndex(cell => 
-                                typeof cell === 'string' && 
-                                (cell.toLowerCase().includes('cash') || cell.toLowerCase().includes('balance'))
-                            );
-                            if (cashIdx !== -1 && row[cashIdx + 1] !== undefined) {
-                                cashValue = parseNumber(row[cashIdx + 1]);
-                                if (cashValue !== 0) break;
-                            }
-                        }
-                        
-                        // Fallback: if no label found, look for any number in the sheet
-                        if (cashValue === 0) {
-                            for (const row of sheetData) {
-                                if (!Array.isArray(row)) continue;
-                                for (const cell of row) {
-                                    const val = parseNumber(cell);
-                                    if (val > 0) {
-                                        cashValue = val;
-                                        break;
-                                    }
-                                }
-                                if (cashValue > 0) break;
-                            }
-                        }
-                        
-                        if (cashValue !== 0) {
-                            console.log(`Extracted cash for portfolio "${sheetName}": ${cashValue}`);
-                            cashMap[sheetName] = cashValue;
-                        }
-                    });
-
-                    processCsvData(tradesData, cashMap, nameMap);
-                } catch (err) {
-                    console.error('File Processing Error:', err);
-                    alert(`Error processing file: ${err.message}`);
-                }
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('trades')) || workbook.SheetNames[0];
+                const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+                processTrades(rawData);
                 event.target.value = '';
             };
             reader.readAsArrayBuffer(file);
         }
 
-        let expandedAsset = null;
-
-        function toggleExpand(symbol) {
-            expandedAsset = expandedAsset === symbol ? null : symbol;
-            renderContent();
-            lucide.createIcons();
-        }
-
-        function refreshPrices(portfolioId) {
-            const p = portfolios.find(p => p.id === portfolioId);
-            if (!p) return;
-
-            p.holdings.forEach(h => {
-                const fluctuation = 1 + (Math.random() * 0.04 - 0.02); // +/- 2%
-                if (useLivePrice) {
-                    h.currentPrice = (h.currentPrice || h.price) * fluctuation;
-                } else if (eodSource === 'google') {
-                    h.googleEodPrice = (h.googleEodPrice || h.price) * fluctuation;
+        function processTrades(rawData) {
+            if (rawData.length < 2) return;
+            const startIdx = isNaN(parseFloat(rawData[0][2])) ? 1 : 0;
+            const temp = {};
+            for (let i = startIdx; i < rawData.length; i++) {
+                const row = rawData[i];
+                if (row.length < 2) continue;
+                const pName = row[0]?.trim() || 'Imported';
+                const symbol = row[1]?.trim() || 'UNKNOWN';
+                const shares = parseNum(row[2]);
+                const price = parseNum(row[14]); // Col O
+                const currency = row[4]?.trim() || 'GBP';
+                const fx = parseNum(row[16], 1); // Col Q
+                let adjPrice = currency === 'GBp' ? price / 100 : price;
+                if (symbol.endsWith('.US') && fx) adjPrice /= fx;
+                if (!temp[pName]) temp[pName] = {};
+                if (temp[pName][symbol]) {
+                    temp[pName][symbol].shares += shares;
+                    temp[pName][symbol].value += shares * adjPrice;
+                } else {
+                    temp[pName][symbol] = { symbol, name: TICKER_NAMES[symbol] || symbol, shares, price: adjPrice, value: shares * adjPrice, strategy: row[12] || 'N/A' };
                 }
+            }
+            Object.entries(temp).forEach(([name, holdingsMap]) => {
+                const holdings = Object.values(holdingsMap);
+                const existing = portfolios.find(p => p.name === name);
+                if (existing) existing.holdings = holdings;
+                else portfolios.push({ id: 'p-' + Date.now(), name, color: '#6366F1', holdings, cash: 0 });
             });
-
-            savePortfolios();
-            render();
-            console.log(`Prices refreshed for ${p.name}`);
-        }
-
-        function refreshAllPrices() {
-            // Auto-refresh if using live prices OR google EOD prices
-            if (!useLivePrice && eodSource !== 'google') return;
-            
-            let changed = false;
-            portfolios.forEach(p => {
-                p.holdings.forEach(h => {
-                    const fluctuation = 1 + (Math.random() * 0.004 - 0.002); // subtle fluctuation for auto-refresh
-                    if (useLivePrice) {
-                        h.currentPrice = (h.currentPrice || h.price) * fluctuation;
-                        changed = true;
-                    } else if (eodSource === 'google') {
-                        h.googleEodPrice = (h.googleEodPrice || h.price) * fluctuation;
-                        changed = true;
-                    }
-                });
-            });
-
-            if (changed) {
-                savePortfolios();
-                render();
-                console.log('Auto-refreshed prices based on current selection.');
-            }
-        }
-
-        // Auto-refresh every 30 seconds if live prices are enabled
-        setInterval(refreshAllPrices, 30000);
-
-        function updateCash(id, amount) {
-            const p = portfolios.find(p => p.id === id);
-            if (p) {
-                p.cash = parseFloat(amount) || 0;
-                savePortfolios();
-                render();
-            }
-        }
-
-        function handleSort(key) {
-            if (sortConfig.key === key) {
-                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
-            } else {
-                sortConfig.key = key;
-                sortConfig.direction = 'asc';
-            }
+            localStorage.setItem('ft_portfolios', JSON.stringify(portfolios));
             render();
         }
 
         function clearAllData() {
-            if (confirm('Are you sure you want to clear all portfolio data? This will reset the app to its default state.')) {
-                localStorage.removeItem('foliotrack_portfolios');
-                localStorage.removeItem('foliotrack_strategies');
-                portfolios = [...INITIAL_PORTFOLIOS];
-                strategyMappings = [];
-                activeTab = 'summary';
+            if (confirm('Clear all data?')) {
+                localStorage.clear();
+                portfolios = [];
                 render();
             }
         }
@@ -929,1200 +317,105 @@
                         <div class="w-2 h-2 rounded-full" style="background-color: ${p.color}"></div>
                         ${p.name}
                     </div>
-                    <i data-lucide="chevron-right" class="w-4 h-4 ${activeTab === p.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity"></i>
+                    <i data-lucide="chevron-right" class="w-4 h-4 ${activeTab === p.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}"></i>
                 </button>
             `).join('');
-
-            // Update active state for fixed tabs
-            ['summary', 'strategies'].forEach(id => {
-                const btn = document.getElementById(`tab-${id}`);
-                if (btn) {
-                    if (activeTab === id) {
-                        btn.className = "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all bg-indigo-50 text-indigo-700";
-                    } else {
-                        btn.className = "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900";
-                    }
-                }
-            });
-
-            // Update Drive Button
-            const driveBtnText = document.getElementById('drive-btn-text');
-            const driveBtn = document.getElementById('drive-connect-btn');
-            if (driveBtnText && driveBtn) {
-                driveBtnText.innerText = isDriveLoading ? 'Loading...' : (isGoogleAuthenticated ? 'Import from Drive' : 'Connect Google Drive');
-                driveBtn.disabled = isDriveLoading;
-            }
-
-            // Update Profile Section
-            const profileSection = document.getElementById('profile-section');
-            if (profileSection) {
-                if (userData) {
-                    profileSection.innerHTML = `
-                        <div class="bg-slate-50 rounded-2xl p-4 flex items-center gap-3 relative">
-                            ${isDemoMode ? `
-                                <div class="absolute -top-2 -right-2 bg-amber-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">DEMO</div>
-                            ` : ''}
-                            ${userData.picture ? `
-                                <img src="${userData.picture}" alt="${userData.name}" class="w-10 h-10 rounded-full border border-slate-200" referrerPolicy="no-referrer">
-                            ` : `
-                                <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
-                                    ${userData.name.charAt(0)}
-                                </div>
-                            `}
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-bold truncate">${userData.name}</p>
-                                <p class="text-[10px] text-slate-500 truncate">${isDemoMode ? 'Demo Account' : userData.email}</p>
-                            </div>
-                            <button onclick="logout()" class="text-slate-400 hover:text-rose-500 transition-colors">
-                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                            </button>
-                        </div>
-                    `;
-                } else {
-                    profileSection.innerHTML = `
-                        <button onclick="handleGoogleConnect()" class="w-full bg-slate-900 text-white rounded-2xl p-4 flex items-center justify-center gap-3 hover:bg-slate-800 transition-all font-bold text-sm shadow-lg shadow-slate-200">
-                            <i data-lucide="globe" class="w-4 h-4"></i>
-                            Login with Google
-                        </button>
-                    `;
-                }
-            }
-
-            // Update Drive Modal
-            const modal = document.getElementById('drive-modal');
-            const fileList = document.getElementById('drive-file-list');
-            if (modal && fileList) {
-                if (isDriveModalOpen) {
-                    modal.classList.remove('hidden');
-                    modal.classList.add('flex');
-                    fileList.innerHTML = driveFiles.length === 0 ? `
-                        <div class="p-8 text-center text-slate-500 italic">No CSV files found in your Google Drive.</div>
-                    ` : driveFiles.map(file => `
-                        <button onclick="handleDriveFileSelect('${file.id}')" class="w-full flex items-center gap-3 p-4 rounded-2xl hover:bg-slate-50 transition-colors text-left group">
-                            <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-100 transition-colors">
-                                <i data-lucide="cloud" class="w-5 h-5"></i>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="font-bold text-slate-900 truncate">${file.name}</p>
-                                <p class="text-xs text-slate-500">${file.mimeType.includes('spreadsheet') ? 'Google Sheet' : 'CSV File'}</p>
-                            </div>
-                        </button>
-                    `).join('');
-                } else {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                }
-            }
+            document.getElementById('tab-summary').className = activeTab === 'summary' ? "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all bg-indigo-50 text-indigo-700" : "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-900";
         }
 
         function renderHeader() {
-            const title = document.getElementById('header-title');
-            const subtitle = document.getElementById('header-subtitle');
-            if (activeTab === 'summary') {
-                title.innerText = 'Financial Overview';
-                subtitle.innerText = 'Dashboard';
-            } else if (activeTab === 'strategies') {
-                title.innerText = 'Strategy Mappings';
-                subtitle.innerText = 'Analysis';
-            } else {
-                const p = portfolios.find(p => p.id === activeTab);
-                title.innerText = p ? p.name : 'Portfolio';
-                subtitle.innerText = 'Portfolio View';
-            }
+            document.getElementById('header-title').innerText = activeTab === 'summary' ? 'Financial Overview' : (portfolios.find(p => p.id === activeTab)?.name || 'Portfolio');
+            const eodBtn = document.getElementById('val-eod');
+            const liveBtn = document.getElementById('val-live');
+            eodBtn.className = valuationMode === 'eod' ? "px-3 py-1 text-[10px] font-bold rounded-md transition-all bg-white text-slate-900 shadow-sm" : "px-3 py-1 text-[10px] font-bold rounded-md transition-all text-slate-500 hover:text-slate-700";
+            liveBtn.className = valuationMode === 'live' ? "px-3 py-1 text-[10px] font-bold rounded-md transition-all bg-white text-slate-900 shadow-sm" : "px-3 py-1 text-[10px] font-bold rounded-md transition-all text-slate-500 hover:text-slate-700";
         }
 
         function renderContent() {
             const container = document.getElementById('content-area');
-            if (activeTab === 'summary') {
-                renderSummary(container);
-            } else if (activeTab === 'strategies') {
-                renderStrategies(container);
-            } else {
-                renderDetail(container);
-            }
+            if (activeTab === 'summary') renderSummary(container);
+            else renderDetail(container);
         }
 
         function renderSummary(container) {
-            if (marketSummaryData.length === 0 && !isMarketLoading) {
-                fetchMarketSummary();
-            }
-
-            const totalValue = portfolios.reduce((acc, p) => {
-                const holdingsValue = p.holdings.reduce((hAcc, h) => {
-                    let val;
-                    if (useLivePrice) {
-                        val = h.shares * (h.currentPrice || h.price);
-                    } else {
-                        val = eodSource === 'google' ? (h.shares * (h.googleEodPrice || h.price)) : h.value;
-                    }
-                    return hAcc + val;
-                }, 0);
-                return acc + holdingsValue + (p.cash || 0);
-            }, 0);
-
-            const allHoldings = portfolios.flatMap(p => p.holdings.map(h => {
-                let displayValue;
-                if (useLivePrice) {
-                    displayValue = h.shares * (h.currentPrice || h.price);
-                } else {
-                    displayValue = eodSource === 'google' ? (h.shares * (h.googleEodPrice || h.price)) : h.value;
-                }
-                return { ...h, displayValue };
-            }));
-            const topHoldings = allHoldings.sort((a, b) => b.displayValue - a.displayValue).slice(0, 5);
-
+            if (marketSummaryData.length === 0 && !isMarketLoading) fetchMarketSummary();
+            const total = portfolios.reduce((acc, p) => acc + p.holdings.reduce((hAcc, h) => hAcc + (h.shares * (valuationMode === 'live' ? (livePrices[h.symbol] || h.price) : h.price)), 0), 0);
             container.innerHTML = `
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <div class="lg:col-span-2 bg-indigo-600 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-100">
-                        <div class="relative z-10">
-                            <h2 class="text-3xl font-bold mb-2">
-                                ${userData ? `Welcome back, ${userData.name.split(' ')[0]}!` : 'Welcome to FolioTrack'}
-                                ${isDemoMode ? '<span class="text-xs bg-amber-400/30 text-white px-2 py-1 rounded-lg ml-2 align-middle">DEMO MODE</span>' : ''}
-                            </h2>
-                            <p class="text-indigo-100 mb-6 max-w-md">
-                                ${userData 
-                                    ? (isDemoMode 
-                                        ? 'You are currently in Demo Mode. Real Google credentials are not configured, so we are using sample data for testing.' 
-                                        : 'Your portfolios are synced and ready. Track your performance across all assets in real-time.')
-                                    : 'Connect your Google account to sync your trades directly from Google Drive and keep your data secure.'}
-                            </p>
-                            <div class="flex flex-wrap gap-4">
-                                <button 
-                                    onclick="handleGoogleConnect()"
-                                    class="bg-white text-indigo-600 px-6 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-all flex items-center gap-2 shadow-lg"
-                                >
-                                    <i data-lucide="${userData ? 'cloud' : 'globe'}" class="w-5 h-5"></i>
-                                    ${userData ? 'Import from Drive' : 'Connect Google Account'}
-                                </button>
-                                <button 
-                                    onclick="document.getElementById('csv-input').click()"
-                                    class="px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2 ${userData ? 'bg-white text-indigo-600 hover:bg-indigo-50' : 'bg-indigo-500 text-white hover:bg-indigo-400 border border-indigo-400'}"
-                                >
-                                    <i data-lucide="upload" class="w-5 h-5"></i>
-                                    Upload CSV
-                                </button>
-                            </div>
-                        </div>
-                        <div class="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
-                        <div class="absolute bottom-0 left-0 w-32 h-32 bg-indigo-400/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl"></div>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+                    <div class="lg:col-span-2 bg-indigo-600 rounded-3xl p-10 text-white relative overflow-hidden shadow-2xl">
+                        <h2 class="text-4xl font-bold mb-4">Portfolio Intelligence</h2>
+                        <p class="text-indigo-100 mb-8 max-w-md">Track your global assets with precision. Import your trades to see real-time performance.</p>
+                        <button onclick="document.getElementById('csv-input').click()" class="bg-white text-indigo-600 px-8 py-4 rounded-2xl font-bold hover:bg-indigo-50 shadow-xl flex items-center gap-3">
+                            <i data-lucide="upload"></i> Import Data
+                        </button>
                     </div>
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                        <div>
-                            <h3 class="text-lg font-bold text-slate-900 mb-2">Valuation Method</h3>
-                            <p class="text-slate-500 text-sm mb-6">Switch between real-time market prices and your end-of-day purchase prices for portfolio valuation.</p>
-                        </div>
-                        <div class="space-y-3">
-                            <button 
-                                onclick="toggleLivePrice()"
-                                class="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all border ${useLivePrice ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-slate-50 text-slate-600 border-slate-100'}"
-                            >
-                                <i data-lucide="${useLivePrice ? 'zap' : 'clock'}" class="w-5 h-5"></i>
-                                ${useLivePrice ? 'Using Live Prices' : 'Using EOD Prices'}
-                            </button>
-                            ${!useLivePrice ? `
-                                <div class="flex bg-slate-100 p-1 rounded-xl">
-                                    <button onclick="setEodSource('csv')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all ${eodSource === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">CSV Purchase Price</button>
-                                    <button onclick="setEodSource('google')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">Google Last Close</button>
-                                </div>
-                            ` : ''}
-                        </div>
+                    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                        <p class="text-slate-500 font-bold text-xs uppercase tracking-widest mb-2">Total Net Worth (${valuationMode.toUpperCase()})</p>
+                        <h3 class="text-4xl font-bold text-slate-900">${formatCurrency(total)}</h3>
                     </div>
                 </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-2">
-                        <div class="flex items-center justify-between">
-                            <div class="p-2 rounded-lg bg-emerald-600"><i data-lucide="trending-up" class="text-white w-5 h-5"></i></div>
-                            <div class="flex items-center text-sm font-medium text-emerald-600"><i data-lucide="arrow-up-right" class="w-4 h-4"></i>1.1%</div>
-                        </div>
-                        <div class="mt-2">
-                            <p class="text-slate-500 text-sm font-medium">Daily P&L</p>
-                            <h3 class="text-2xl font-bold text-slate-900">${formatCurrency(1240)}</h3>
-                        </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                        <h3 class="text-xl font-bold text-slate-900 mb-8">Asset Allocation</h3>
+                        <div class="chart-container"><canvas id="summaryChart"></canvas></div>
                     </div>
-                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-2">
-                        <div class="flex items-center justify-between">
-                            <div class="p-2 rounded-lg bg-slate-800"><i data-lucide="layout-dashboard" class="text-white w-5 h-5"></i></div>
-                        </div>
-                        <div class="mt-2">
-                            <p class="text-slate-500 text-sm font-medium">Active Portfolios</p>
-                            <h3 class="text-2xl font-bold text-slate-900">${portfolios.length}</h3>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-2 space-y-8">
-                        <!-- Global Market Summary -->
-                        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                            <div class="flex items-center justify-between mb-6">
-                                <h3 class="text-lg font-bold text-slate-900">Global Market Summary</h3>
-                                <div class="flex items-center gap-2">
-                                    <button onclick="fetchMarketSummary()" class="p-2 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors">
-                                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                                    </button>
-                                    <i data-lucide="globe" class="text-slate-400 w-5 h-5"></i>
+                    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                        <h3 class="text-xl font-bold text-slate-900 mb-8">Market Summary</h3>
+                        <div class="space-y-4">
+                            ${isMarketLoading ? '<p class="text-center py-12 animate-pulse">Loading market data...</p>' : marketSummaryData.map(s => `
+                                <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                    <div class="flex justify-between font-bold text-sm"><span>${s.name}</span><span class="text-emerald-600">Live</span></div>
                                 </div>
-                            </div>
-                            ${isMarketLoading ? `
-                                <div class="animate-pulse space-y-4">
-                                    <div class="h-24 bg-slate-50 rounded-xl"></div>
-                                    <div class="h-24 bg-slate-50 rounded-xl"></div>
-                                    <div class="h-24 bg-slate-50 rounded-xl"></div>
-                                </div>
-                            ` : `
-                                <div class="grid grid-cols-1 gap-4">
-                                    ${marketSummaryData.map(item => `
-                                        <div 
-                                            onclick="toggleSector('${item.name}')"
-                                            class="p-4 rounded-xl border transition-all cursor-pointer group ${selectedSector === item.name ? 'bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200' : 'bg-slate-50 border-slate-100 hover:border-indigo-100'}"
-                                        >
-                                            <div class="flex items-center justify-between mb-3">
-                                                <div class="flex items-center gap-3">
-                                                    <span class="font-bold text-slate-900 text-sm">${item.name}</span>
-                                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${item.status === 'Up' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">
-                                                        ${item.status} ${item.avgChange > 0 ? '+' : ''}${item.avgChange}%
-                                                    </span>
-                                                </div>
-                                                <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform ${selectedSector === item.name ? 'rotate-90' : ''}"></i>
-                                            </div>
-                                            <p class="text-xs text-slate-500 line-clamp-2 mb-4">${item.trend}</p>
-                                            
-                                            <!-- Heatmap Grid -->
-                                            <div class="flex flex-wrap gap-1.5">
-                                                ${item.tickers ? item.tickers.map(t => `
-                                                    <div 
-                                                        class="w-8 h-8 rounded-md flex items-center justify-center text-[8px] font-bold transition-all hover:scale-110 ${t.change > 2 ? 'bg-emerald-600 text-white' : t.change > 0 ? 'bg-emerald-400 text-white' : t.change < -2 ? 'bg-rose-600 text-white' : t.change < 0 ? 'bg-rose-400 text-white' : 'bg-slate-300 text-slate-600'}"
-                                                        title="${t.symbol}: ${t.change}%"
-                                                    >
-                                                        ${t.symbol.slice(0, 3)}
-                                                    </div>
-                                                `).join('') : ''}
-                                            </div>
-
-                                            ${selectedSector === item.name ? `
-                                                <div class="mt-6 pt-4 border-t border-indigo-100 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                    <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-3">Ticker Performance</p>
-                                                    <div class="grid grid-cols-1 gap-y-2">
-                                                        ${item.tickers ? item.tickers.map(t => `
-                                                            <div class="flex items-center justify-between text-xs py-1 border-b border-slate-50 last:border-0">
-                                                                <div class="flex flex-col">
-                                                                    <span class="font-bold text-slate-700">${t.symbol}</span>
-                                                                    <span class="text-[10px] text-slate-400">Price: ${t.price}</span>
-                                                                </div>
-                                                                <span class="font-bold ${t.change >= 0 ? 'text-emerald-600' : 'text-rose-600'}">
-                                                                    ${t.change > 0 ? '+' : ''}${t.change}%
-                                                                </span>
-                                                            </div>
-                                                        `).join('') : ''}
-                                                    </div>
-                                                </div>
-                                            ` : ''}
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            `}
-                        </div>
-
-                        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                            <h3 class="text-lg font-bold text-slate-900 mb-6">Portfolio Allocation</h3>
-                            <div class="chart-container"><canvas id="allocationChart"></canvas></div>
+                            `).join('')}
                         </div>
                     </div>
-
-                    <div class="space-y-8">
-                        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                            <h3 class="text-lg font-bold text-slate-900 mb-6">Portfolio Breakdown</h3>
-                            <div class="space-y-4">
-                                ${portfolios.map(p => {
-                                    const pValue = p.holdings.reduce((acc, h) => {
-                                        const val = useLivePrice ? (h.shares * (h.currentPrice || h.price * 1.05)) : h.value;
-                                        return acc + val;
-                                    }, 0) + (p.cash || 0);
-                                    return `
-                                        <div class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                                            <div class="flex items-center gap-4">
-                                                <div class="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm" style="background-color: ${p.color}20">
-                                                    <div class="w-3 h-3 rounded-full" style="background-color: ${p.color}"></div>
-                                                </div>
-                                                <div>
-                                                    <p class="font-bold text-slate-900">${p.name}</p>
-                                                    <p class="text-xs text-slate-500">${p.holdings.length} Assets</p>
-                                                </div>
-                                            </div>
-                                            <div class="text-right">
-                                                <p class="font-bold text-slate-900">${formatCurrency(pValue)}</p>
-                                                <p class="text-xs text-slate-500">${totalValue > 0 ? Math.round((pValue / totalValue) * 100) : 0}% Allocation</p>
-                                            </div>
-                                        </div>
-                                    `;
-                                }).join('')}
-                                ${portfolios.length === 0 ? '<p class="text-center text-slate-400 py-8 text-sm">No portfolios found. Import a CSV to get started.</p>' : ''}
-                            </div>
-                        </div>
-
-                        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                            <h3 class="text-lg font-bold text-slate-900 mb-6">Top Holdings</h3>
-                            <div class="space-y-4">
-                                ${topHoldings.map(h => `
-                                    <div class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                                        <div class="flex items-center gap-4">
-                                            <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-xs">${h.symbol.slice(0, 2)}</div>
-                                            <div>
-                                                <p class="font-bold text-slate-900">${h.symbol}</p>
-                                                <p class="text-xs text-slate-500">${h.name}</p>
-                                            </div>
-                                        </div>
-                                        <div class="text-right">
-                                            <p class="font-bold text-slate-900">${formatCurrency(h.displayValue)}</p>
-                                            <p class="text-xs font-medium text-emerald-600">+1.2%</p>
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-12 pt-8 border-t border-slate-200 flex justify-center">
-                    <button onclick="clearAllData()" class="flex items-center gap-2 px-6 py-3 bg-rose-50 text-rose-600 rounded-2xl text-sm font-bold hover:bg-rose-100 transition-all border border-rose-100 shadow-sm">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        Clear All Data & Reset Application
-                    </button>
                 </div>
             `;
-
-            setTimeout(() => {
-                initSummaryChart();
-                lucide.createIcons();
-            }, 0);
+            setTimeout(initSummaryChart, 0);
         }
 
         function renderDetail(container) {
             const p = portfolios.find(p => p.id === activeTab);
             if (!p) return;
-
-            // Calculate values and PnL
-            const processedHoldings = p.holdings.map(h => {
-                const currentPrice = h.currentPrice || h.price;
-                const costBasis = h.value; // Original value from trades
-                const marketValue = h.shares * currentPrice;
-                const pnlValue = marketValue - costBasis;
-                const pnlPercent = costBasis > 0 ? (pnlValue / costBasis) * 100 : 0;
-                
-                return {
-                    ...h,
-                    currentPrice,
-                    marketValue,
-                    pnlValue,
-                    pnlPercent
-                };
-            });
-
-            // Sorting
-            processedHoldings.sort((a, b) => {
-                let valA, valB;
-                if (sortConfig.key === 'symbol') {
-                    valA = a.symbol;
-                    valB = b.symbol;
-                } else if (sortConfig.key === 'value') {
-                    valA = useLivePrice ? a.marketValue : a.value;
-                    valB = useLivePrice ? b.marketValue : b.value;
-                }
-                
-                if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-                return 0;
-            });
-
-            const holdingsValue = processedHoldings.reduce((acc, h) => {
-                let val;
-                if (useLivePrice) {
-                    val = h.marketValue;
-                } else {
-                    val = eodSource === 'google' ? (h.shares * (h.googleEodPrice || h.price)) : h.value;
-                }
-                return acc + val;
-            }, 0);
-            const totalValue = holdingsValue + (p.cash || 0);
-            
-            const allDates = p.holdings.flatMap(h => (h.trades || []).map(t => t.date)).filter(d => d && d !== 'N/A');
-            const earliestDate = allDates.length > 0 ? allDates.reduce((min, d) => d < min ? d : min, allDates[0]) : 'N/A';
-            
-            const cashAllocation = totalValue > 0 ? Math.round(((p.cash || 0) / totalValue) * 100) : 0;
-
-            const sortIcon = (key) => {
-                if (sortConfig.key !== key) return '<i data-lucide="chevrons-up-down" class="w-3 h-3 ml-1 opacity-30"></i>';
-                return sortConfig.direction === 'asc' 
-                    ? '<i data-lucide="chevron-up" class="w-3 h-3 ml-1 text-indigo-600"></i>' 
-                    : '<i data-lucide="chevron-down" class="w-3 h-3 ml-1 text-indigo-600"></i>';
-            };
-
             container.innerHTML = `
-                <div class="space-y-8">
-                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                        <div class="flex flex-col sm:flex-row sm:items-center gap-6">
-                            <div>
-                                <div class="flex items-center gap-3">
-                                    <h2 class="text-3xl font-bold text-slate-900">${p.name}</h2>
-                                    <span class="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-[10px] font-bold uppercase tracking-wider">
-                                        Base: GBP
-                                    </span>
-                                </div>
-                                <div class="flex items-center gap-4 mt-1">
-                                    <p class="text-slate-500 text-sm">Managing ${p.holdings.length} assets</p>
-                                </div>
-                            </div>
-                            <div class="hidden sm:block h-10 w-px bg-slate-200"></div>
-                            <div class="flex items-center gap-3 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
-                                <button onclick="toggleLivePrice()" class="flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${!useLivePrice ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}">
-                                    EOD Price
-                                </button>
-                                <button onclick="toggleLivePrice()" class="flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${useLivePrice ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}">
-                                    Live Price
-                                </button>
-                            </div>
-                            ${!useLivePrice ? `
-                                <div class="flex bg-slate-100 p-1 rounded-xl">
-                                    <button onclick="setEodSource('csv')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">CSV</button>
-                                    <button onclick="setEodSource('google')" class="flex-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${eodSource === 'google' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">Google</button>
-                                </div>
-                            ` : ''}
-                        </div>
-                        <div class="flex flex-row items-center justify-between lg:flex-col lg:items-end gap-2">
-                            <div class="lg:text-right">
-                                <p class="text-sm text-slate-500 font-medium">Total Portfolio Value (${useLivePrice ? 'Live' : 'EOD'})</p>
-                                <p class="text-3xl font-bold text-slate-900">${formatCurrency(totalValue)}</p>
-                            </div>
-                            <button onclick="refreshPrices('${p.id}')" class="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors">
-                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-                                Refresh Prices
-                            </button>
-                        </div>
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div class="data-row bg-slate-50/50 font-bold">
+                        <div class="col-header">Asset</div><div class="col-header">Strategy</div><div class="col-header">Shares</div><div class="col-header">Price</div><div class="col-header">Value</div><div></div>
                     </div>
-
-                    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left border-collapse">
-                                <thead>
-                                    <tr class="bg-slate-50 border-b border-slate-100">
-                                        <th onclick="handleSort('symbol')" class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors">
-                                            <div class="flex items-center">Asset ${sortIcon('symbol')}</div>
-                                        </th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Strategy</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Currency</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">CSV Price</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Google EOD</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Current Price</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Book FX</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Market FX</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">PnL £</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">PnL %</th>
-                                        <th onclick="handleSort('value')" class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors">
-                                            <div class="flex items-center">Value ${sortIcon('value')}</div>
-                                        </th>
-                                        <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Allocation</th>
-                                        <th class="px-6 py-4"></th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100">
-                                    <!-- Cash Row -->
-                                    <tr class="bg-slate-50/30 border-b border-slate-100">
-                                        <td class="px-6 py-4">
-                                            <div class="flex items-center gap-3">
-                                                <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
-                                                    <i data-lucide="wallet" class="w-4 h-4"></i>
-                                                </div>
-                                                <div>
-                                                    <p class="font-bold text-slate-900">Cash Balance</p>
-                                                    <p class="text-xs text-slate-500">Available Funds</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td class="px-6 py-4 text-sm text-slate-600">
-                                            <span class="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md text-[10px] font-bold uppercase tracking-wider">
-                                                Liquidity
-                                            </span>
-                                        </td>
-                                        <td class="px-6 py-4 text-sm font-medium text-slate-600">GBP</td>
-                                        <td class="px-6 py-4 text-sm font-medium text-slate-400">N/A</td>
-                                        <td class="px-6 py-4 text-sm text-slate-400">N/A</td>
-                                        <td class="px-6 py-4 text-sm text-slate-400">N/A</td>
-                                        <td class="px-6 py-4 text-sm text-slate-400">N/A</td>
-                                        <td class="px-6 py-4 text-sm text-slate-400">N/A</td>
-                                        <td class="px-6 py-4 text-sm text-slate-400">N/A</td>
-                                        <td class="px-6 py-4 text-sm text-slate-400">N/A</td>
-                                        <td class="px-6 py-4">
-                                            <div class="relative group flex items-center gap-1">
-                                                <span class="text-sm font-bold text-slate-900">£</span>
-                                                <input 
-                                                    type="number" 
-                                                    step="0.01"
-                                                    value="${(p.cash || 0).toFixed(2)}" 
-                                                    onchange="updateCash('${p.id}', this.value)"
-                                                    class="w-32 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none font-bold text-slate-900 transition-colors py-1"
-                                                />
-                                            </div>
-                                        </td>
-                                        <td class="px-6 py-4">
-                                            <div class="flex items-center gap-2">
-                                                <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                    <div class="h-full rounded-full bg-emerald-500" style="width: ${cashAllocation}%"></div>
-                                                </div>
-                                                <span class="text-xs font-medium text-slate-500">${cashAllocation}%</span>
-                                            </div>
-                                        </td>
-                                        <td class="px-6 py-4"></td>
-                                    </tr>
-                                    ${processedHoldings.map((h, idx) => {
-                                        const isExpanded = expandedAsset === h.symbol;
-                                        let displayValue;
-                                        if (useLivePrice) {
-                                            displayValue = h.marketValue;
-                                        } else {
-                                            displayValue = eodSource === 'google' ? (h.shares * (h.googleEodPrice || h.price)) : h.value;
-                                        }
-                                        const allocation = totalValue > 0 ? Math.round((displayValue / totalValue) * 100) : 0;
-                                        
-                                        const holdingDates = (h.trades || []).map(t => t.date).filter(d => d && d !== 'N/A');
-                                        const holdingEarliestDate = holdingDates.length > 0 
-                                            ? holdingDates.reduce((min, d) => d < min ? d : min, holdingDates[0]) 
-                                            : 'N/A';
-
-                                        const pnlColor = h.pnlValue >= 0 ? 'text-emerald-600' : 'text-rose-600';
-
-                                        return `
-                                            <tr onclick="toggleExpand('${h.symbol}')" class="hover:bg-slate-50 transition-colors group cursor-pointer ${isExpanded ? 'bg-slate-50/50' : ''}">
-                                                <td class="px-6 py-4">
-                                                    <div class="flex items-center gap-3">
-                                                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-[10px]">${h.symbol.slice(0, 2)}</div>
-                                                        <div>
-                                                            <p class="font-bold text-slate-900">${h.symbol}</p>
-                                                            <div class="flex flex-col">
-                                                                <p class="text-xs text-slate-500">${TICKER_NAMES[h.symbol.toUpperCase()] || h.name || h.symbol}</p>
-                                                                <p class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
-                                                                    <i data-lucide="calendar" class="w-2.5 h-2.5"></i> First: ${holdingEarliestDate}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td class="px-6 py-4 text-sm text-slate-600">
-                                                    <span class="px-2 py-1 bg-slate-100 rounded-md text-[10px] font-bold uppercase tracking-wider">${h.strategy || 'N/A'}</span>
-                                                </td>
-                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">${h.currency || 'GBP'}</td>
-                                                <td class="px-6 py-4 text-sm font-medium text-slate-700">${formatCurrency(h.price, 2)}</td>
-                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">
-                                                    ${h.googleEodPrice ? formatCurrency(h.googleEodPrice, 2) : '<span class="text-slate-300">N/A</span>'}
-                                                </td>
-                                                <td class="px-6 py-4 text-sm font-medium text-indigo-600">
-                                                    <div class="relative group" onclick="event.stopPropagation()">
-                                                        <span class="font-bold text-indigo-600">
-                                                            ${formatCurrency(useLivePrice ? (h.currentPrice || h.price) : (eodSource === 'google' ? (h.googleEodPrice || h.price) : h.price), 2)}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">
-                                                     ${h.symbol.toUpperCase().endsWith('.LSE') ? 'N/A' : (h.bookFxRate ? h.bookFxRate.toFixed(4) : '1.0000')}
-                                                 </td>
-                                                <td class="px-6 py-4 text-sm font-medium text-slate-600">
-                                                     ${h.symbol.toUpperCase().endsWith('.LSE') ? 'N/A' : (h.marketFxRate ? h.marketFxRate.toFixed(4) : '1.0000')}
-                                                 </td>
-                                                <td class="px-6 py-4 text-sm font-bold ${pnlColor}">${formatCurrency(h.pnlValue)}</td>
-                                                <td class="px-6 py-4 text-sm font-bold ${pnlColor}">${formatPercent(h.pnlPercent)}</td>
-                                                <td class="px-6 py-4 text-sm font-bold text-slate-900">
-                                                    ${formatCurrency(displayValue)}
-                                                </td>
-                                                <td class="px-6 py-4">
-                                                    <div class="flex items-center gap-2">
-                                                        <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                            <div class="h-full rounded-full" style="width: ${allocation}%; background-color: ${p.color}"></div>
-                                                        </div>
-                                                        <span class="text-xs font-medium text-slate-500">${allocation}%</span>
-                                                    </div>
-                                                </td>
-                                                <td class="px-6 py-4 text-right">
-                                                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}"></i>
-                                                </td>
-                                            </tr>
-                                            ${isExpanded ? `
-                                                <tr>
-                                                    <td colspan="13" class="px-6 py-0 bg-slate-50/30">
-                                                        <div class="py-4 pl-14 pr-6 space-y-3">
-                                                            <div class="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2">
-                                                                <span>Trade History</span>
-                                                                <div class="flex gap-8">
-                                                                    <span class="w-24 text-right">Date</span>
-                                                                    <span class="w-24 text-right">Shares</span>
-                                                                    <span class="w-24 text-right">Price</span>
-                                                                    <span class="w-24 text-right">Book FX</span>
-                                                                    <span class="w-24 text-right">Market FX</span>
-                                                                    <span class="w-24 text-right">Value (GBP)</span>
-                                                                </div>
-                                                            </div>
-                                                            ${(h.trades || []).map((t, tIdx) => `
-                                                                <div class="flex items-center justify-between text-sm py-1">
-                                                                    <div class="flex items-center gap-2">
-                                                                        <div class="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
-                                                                        <span class="text-slate-500">Trade #${tIdx + 1}</span>
-                                                                        <span class="text-[10px] text-slate-400 ml-2">(${t.currency})</span>
-                                                                         <span class="text-[10px] text-indigo-400 ml-2 italic">${TICKER_NAMES[h.symbol.toUpperCase()] || h.name || h.symbol}</span>
-                                                                    </div>
-                                                                    <div class="flex gap-8 font-medium">
-                                                                        <span class="w-24 text-right text-slate-500 text-xs">${t.date || 'N/A'}</span>
-                                                                        <span class="w-24 text-right text-slate-600">${t.shares}</span>
-                                                                        <span class="w-24 text-right text-slate-600">${formatCurrency(t.price)}</span>
-                                                                        <span class="w-24 text-right text-slate-600 text-[10px]">${h.symbol.toUpperCase().endsWith('.LSE') ? 'N/A' : (t.bookFxRate ? t.bookFxRate.toFixed(4) : '1.0000')}</span>
-                                                                        <span class="w-24 text-right text-slate-600 text-[10px]">${h.symbol.toUpperCase().endsWith('.LSE') ? 'N/A' : (t.marketFxRate ? t.marketFxRate.toFixed(4) : '1.0000')}</span>
-                                                                        <span class="w-24 text-right text-slate-900">${formatCurrency(t.value)}</span>
-                                                                    </div>
-                                                                </div>
-                                                            `).join('')}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ` : ''}
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    ${p.holdings.map(h => {
+                        const price = valuationMode === 'live' ? (livePrices[h.symbol] || h.price) : h.price;
+                        return `
+                            <div class="data-row">
+                                <div class="font-bold">${h.symbol}</div>
+                                <div><span class="px-2 py-1 bg-slate-100 rounded text-[10px] font-bold">${h.strategy}</span></div>
+                                <div class="data-value">${h.shares}</div>
+                                <div class="data-value ${valuationMode === 'live' && livePrices[h.symbol] ? 'text-indigo-600 font-bold' : ''}">${formatCurrency(price)}</div>
+                                <div class="data-value font-bold">${formatCurrency(h.shares * price)}</div>
+                                <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             `;
-            
-            setTimeout(() => {
-                lucide.createIcons();
-            }, 0);
         }
 
-        function addManualMapping() {
-            const code = document.getElementById('manual-code').value.trim();
-            const sector = document.getElementById('manual-sector').value.trim();
-            if (code && sector) {
-                strategyMappings = strategyMappings.filter(m => m.code !== code);
-                strategyMappings.push({ code, sector });
-                saveStrategies();
-                render();
-            }
-        }
-
-        function deleteMapping(code) {
-            strategyMappings = strategyMappings.filter(m => m.code !== code);
-            saveStrategies();
-            render();
-        }
-
-        function toggleExposureSector(name) {
-            console.log('Toggling sector exposure:', name);
-            if (selectedExposureSector === name) {
-                selectedExposureSector = null;
-                selectedExposurePortfolio = null;
-            } else {
-                selectedExposureSector = name;
-                selectedExposurePortfolio = null;
-            }
-            render();
-        }
-
-        function toggleExposurePortfolio(name) {
-            selectedExposurePortfolio = selectedExposurePortfolio === name ? null : name;
-            render();
-        }
-
-        function renderStrategies(container) {
-            const sectorDataMap = {};
-            let totalValue = 0;
-            
-            portfolios.forEach(p => {
-                p.holdings.forEach(h => {
-                    const mapping = strategyMappings.find(m => m.code === h.strategy);
-                    const sector = mapping ? mapping.sector : 'Unmapped';
-                    const val = useLivePrice ? (h.shares * (h.currentPrice || h.price * 1.05)) : h.value;
-                    
-                    if (!sectorDataMap[sector]) {
-                        sectorDataMap[sector] = { value: 0, count: 0, portfolioBreakdown: {}, tickerBreakdown: {} };
-                    }
-                    sectorDataMap[sector].value += val;
-                    sectorDataMap[sector].count += 1;
-                    totalValue += val;
-
-                    // Portfolio breakdown
-                    if (!sectorDataMap[sector].portfolioBreakdown[p.name]) {
-                        sectorDataMap[sector].portfolioBreakdown[p.name] = { value: 0, color: p.color, tickers: [] };
-                    }
-                    sectorDataMap[sector].portfolioBreakdown[p.name].value += val;
-                    sectorDataMap[sector].portfolioBreakdown[p.name].tickers.push({
-                        symbol: h.symbol,
-                        name: TICKER_NAMES[h.symbol.toUpperCase()] || h.name || h.symbol,
-                        value: val
-                    });
-
-                    // Ticker breakdown
-                    if (!sectorDataMap[sector].tickerBreakdown[h.symbol]) {
-                        sectorDataMap[sector].tickerBreakdown[h.symbol] = { value: 0, name: TICKER_NAMES[h.symbol.toUpperCase()] || h.name || h.symbol };
-                    }
-                    sectorDataMap[sector].tickerBreakdown[h.symbol].value += val;
-                });
-            });
-
-            const sectorData = Object.entries(sectorDataMap).map(([name, data]) => ({
-                name,
-                value: data.value,
-                count: data.count,
-                portfolioBreakdown: Object.entries(data.portfolioBreakdown)
-                    .map(([pName, pData]) => ({ 
-                        name: pName, 
-                        value: pData.value, 
-                        color: pData.color,
-                        tickers: pData.tickers.sort((a, b) => b.value - a.value)
-                    }))
-                    .sort((a, b) => b.value - a.value),
-                tickerBreakdown: Object.entries(data.tickerBreakdown)
-                    .map(([symbol, tData]) => ({ symbol, name: tData.name, value: tData.value }))
-                    .sort((a, b) => b.value - a.value),
-                color: name === 'Unmapped' ? '#94a3b8' : `hsl(${Math.abs(name.split('').reduce((a, b) => a + b.charCodeAt(0), 0) % 360)}, 70%, 50%)`
-            })).sort((a, b) => b.value - a.value);
-
-            container.innerHTML = `
-                <!-- Sector Exposure (Top Section) -->
-                <div class="space-y-8 mb-16">
-                    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
-                        <div class="flex flex-col xl:flex-row gap-12">
-                            <!-- Chart Side -->
-                            <div class="xl:w-1/3 flex flex-col items-center">
-                                <div class="w-full">
-                                    <h3 class="text-xl font-bold text-slate-900 mb-2">Sector Exposure</h3>
-                                    <p class="text-sm text-slate-500 mb-8">Overall portfolio distribution by sector</p>
-                                </div>
-                                <div class="chart-container" style="height: 350px; max-width: 400px;"><canvas id="sectorChart"></canvas></div>
-                            </div>
-                            
-                            <!-- List Side -->
-                            <div class="xl:w-2/3">
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    ${sectorData.map(item => {
-                                        const isSelected = selectedExposureSector === item.name;
-                                        return `
-                                            <div class="space-y-2 ${isSelected ? 'md:col-span-2' : ''}">
-                                                <button 
-                                                    onclick="toggleExposureSector('${item.name.replace(/'/g, "\\'")}')"
-                                                    class="w-full flex items-center justify-between p-4 rounded-2xl transition-all ${isSelected ? 'bg-indigo-50 ring-1 ring-indigo-200 shadow-sm' : 'bg-slate-50 border border-slate-100 hover:border-indigo-200 hover:bg-white'}"
-                                                >
-                                                    <div class="flex items-center gap-3">
-                                                        <div class="w-3 h-3 rounded-full" style="background-color: ${item.color}"></div>
-                                                        <span class="text-sm font-bold text-slate-700">${item.name}</span>
-                                                    </div>
-                                                    <div class="flex items-center gap-3">
-                                                        <span class="text-sm font-bold text-slate-900">${formatCurrency(item.value)}</span>
-                                                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform ${isSelected ? 'rotate-90' : ''}"></i>
-                                                    </div>
-                                                </button>
-
-                                                ${isSelected ? `
-                                                    <div class="p-6 bg-white border border-indigo-100 rounded-2xl mt-2 space-y-8 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
-                                                            <!-- Portfolio Breakdown -->
-                                                            <div>
-                                                                <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-4">Portfolio Exposure</p>
-                                                                <div class="space-y-3">
-                                                                    ${item.portfolioBreakdown.map(p => {
-                                                                        const isPortfolioSelected = selectedExposurePortfolio === p.name;
-                                                                        return `
-                                                                            <div class="space-y-2">
-                                                                                <button 
-                                                                                    onclick="toggleExposurePortfolio('${p.name.replace(/'/g, "\\'")}')"
-                                                                                    class="w-full flex items-center justify-between p-3 rounded-xl transition-all ${isPortfolioSelected ? 'bg-indigo-50 ring-1 ring-indigo-100' : 'hover:bg-slate-50 border border-transparent hover:border-slate-100'}"
-                                                                                >
-                                                                                    <div class="flex items-center gap-2">
-                                                                                        <div class="w-2 h-2 rounded-full" style="background-color: ${p.color}"></div>
-                                                                                        <span class="text-xs text-slate-600 font-medium">${p.name}</span>
-                                                                                    </div>
-                                                                                    <div class="flex items-center gap-2">
-                                                                                        <span class="text-xs font-bold text-slate-900">${formatCurrency(p.value)}</span>
-                                                                                        <i data-lucide="chevron-right" class="w-3 h-3 text-slate-400 transition-transform ${isPortfolioSelected ? 'rotate-90' : ''}"></i>
-                                                                                    </div>
-                                                                                </button>
-                                                                                
-                                                                                ${isPortfolioSelected ? `
-                                                                                    <div class="pl-4 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                                                        ${p.tickers.map(t => `
-                                                                                            <div class="flex items-center justify-between text-[10px] p-2 bg-white rounded-lg border border-indigo-50">
-                                                                                                <div class="flex flex-col">
-                                                                                                    <span class="font-bold text-slate-700">${t.symbol}</span>
-                                                                                                    <span class="text-[9px] text-slate-400 truncate max-w-[100px]">${t.name}</span>
-                                                                                                </div>
-                                                                                                <span class="font-bold text-slate-900">${formatCurrency(t.value)}</span>
-                                                                                            </div>
-                                                                                        `).join('')}
-                                                                                    </div>
-                                                                                ` : ''}
-                                                                            </div>
-                                                                        `;
-                                                                    }).join('')}
-                                                                </div>
-                                                            </div>
-
-                                                            <!-- Ticker Breakdown -->
-                                                            <div>
-                                                                <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-4">Ticker Breakdown</p>
-                                                                <div class="grid grid-cols-1 gap-2">
-                                                                    ${item.tickerBreakdown.map(t => `
-                                                                        <div class="flex items-center justify-between text-xs p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                                                            <div class="flex flex-col">
-                                                                                <span class="font-bold text-slate-900">${t.symbol}</span>
-                                                                                <span class="text-[10px] text-slate-500 truncate max-w-[150px]">${t.name}</span>
-                                                                            </div>
-                                                                            <span class="font-bold text-slate-900">${formatCurrency(t.value)}</span>
-                                                                        </div>
-                                                                    `).join('')}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ` : ''}
-                                            </div>
-                                        `;
-                                    }).join('')}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Strategy Mappings (Bottom Section) -->
-                <div class="pt-12 border-t border-slate-200">
-                    <div class="flex items-center justify-between mb-8">
-                        <div>
-                            <h3 class="text-lg font-bold text-slate-900">Strategy Mappings</h3>
-                            <p class="text-sm text-slate-500">Map strategy codes to sectors for portfolio analysis</p>
-                        </div>
-                        <button onclick="document.getElementById('strategy-csv-input').click()" class="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
-                            <i data-lucide="upload" class="w-4 h-4"></i>
-                            Import Mappings
-                        </button>
-                    </div>
-
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div class="lg:col-span-1 space-y-6">
-                            <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                                <h3 class="text-md font-bold text-slate-900 mb-4">Add Manual Mapping</h3>
-                                <div class="space-y-4">
-                                    <input 
-                                        type="text" 
-                                        id="manual-code"
-                                        placeholder="Strategy Code (e.g. T1)" 
-                                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                    />
-                                    <input 
-                                        type="text" 
-                                        id="manual-sector"
-                                        placeholder="Sector (e.g. Technology)" 
-                                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                    />
-                                    <button 
-                                        onclick="addManualMapping()"
-                                        class="w-full bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        <i data-lucide="plus" class="w-4 h-4"></i>
-                                        Add Mapping
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="lg:col-span-2">
-                            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                                <table class="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr class="bg-slate-50 border-b border-slate-100">
-                                            <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Strategy Code</th>
-                                            <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mapped Sector</th>
-                                            <th class="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y divide-slate-50">
-                                        ${strategyMappings.map(m => `
-                                            <tr class="hover:bg-slate-50/50 transition-colors">
-                                                <td class="px-6 py-4">
-                                                    <span class="px-2 py-1 bg-slate-100 rounded text-xs font-mono text-slate-600">${m.code}</span>
-                                                </td>
-                                                <td class="px-6 py-4">
-                                                    <span class="font-medium text-slate-900">${m.sector}</span>
-                                                </td>
-                                                <td class="px-6 py-4 text-right">
-                                                    <button 
-                                                        onclick="deleteMapping('${m.code}')"
-                                                        class="text-slate-400 hover:text-rose-600 transition-colors"
-                                                    >
-                                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        `).join('')}
-                                        ${strategyMappings.length === 0 ? `
-                                            <tr>
-                                                <td colspan="3" class="px-6 py-12 text-center text-slate-400 italic">
-                                                    No mappings imported yet.
-                                                </td>
-                                            </tr>
-                                        ` : ''}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            setTimeout(() => {
-                lucide.createIcons();
-                initSectorChart(sectorData);
-            }, 0);
-        }
-
-        function initSectorChart(data) {
-            const ctx = document.getElementById('sectorChart');
-            if (!ctx) return;
-            
-            if (sectorChartInstance) sectorChartInstance.destroy();
-
-            sectorChartInstance = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: data.map(d => d.name),
-                    datasets: [{
-                        data: data.map(d => d.value),
-                        backgroundColor: data.map(d => d.color),
-                        borderWidth: 0,
-                        hoverOffset: 4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false }
-                    },
-                    cutout: '70%'
-                }
-            });
-        }
         function initSummaryChart() {
-            const ctx = document.getElementById('allocationChart');
+            const ctx = document.getElementById('summaryChart');
             if (!ctx) return;
-            
             const data = portfolios.map(p => ({
-                name: p.name,
-                value: p.holdings.reduce((acc, h) => {
-                    const val = useLivePrice ? (h.shares * (h.currentPrice || h.price * 1.05)) : h.value;
-                    return acc + val;
-                }, 0) + (p.cash || 0),
+                label: p.name,
+                value: p.holdings.reduce((acc, h) => acc + (h.shares * (valuationMode === 'live' ? (livePrices[h.symbol] || h.price) : h.price)), 0),
                 color: p.color
             }));
-
             if (chartInstance) chartInstance.destroy();
-
             chartInstance = new Chart(ctx, {
                 type: 'doughnut',
-                data: {
-                    labels: data.map(d => d.name),
-                    datasets: [{
-                        data: data.map(d => d.value),
-                        backgroundColor: data.map(d => d.color),
-                        borderWidth: 0,
-                        hoverOffset: 4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } },
-                        tooltip: {
-                            callbacks: {
-                                label: (context) => ` ${context.label}: ${formatCurrency(context.raw)}`
-                            }
-                        }
-                    },
-                    cutout: '70%'
-                }
+                data: { labels: data.map(d => d.label), datasets: [{ data: data.map(d => d.value), backgroundColor: data.map(d => d.color), borderWidth: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '75%' }
             });
         }
 
-        // --- Init ---
-        fetchMarketSummary();
         render();
     </script>
-
-<script>
-/* ===== Portfolio Import Logic V2 (sheet-driven) ===== */
-
-function getPortfolioDefinitions(portfoliosSheet){
-
-  const portfolios = [];
-  const masters = {};
-
-  portfoliosSheet.forEach(row=>{
-
-    const name = row["PortfolioName"] || row["Portfolio"] || row["Name"];
-    const subs = row["Sub-Portfolios"] || row["SubPortfolios"] || row["ColumnK"];
-
-    if(!name) return;
-
-    if(!subs){
-      portfolios.push(name);
-    }else{
-      masters[name] = subs.split("|").map(s=>s.trim()).filter(Boolean);
-    }
-
-  });
-
-  return {portfolios, masters};
-}
-
-function importPortfolioTrades(sheetName, rows){
-
-  const trades = [];
-  const cash = [];
-
-  rows.forEach(row=>{
-
-    const ticker = row["Ticker"] || row["Symbol"];
-    if(!ticker) return;
-
-    if(ticker === "Cash"){
-
-      cash.push({
-        portfolio: sheetName,
-        currency: row["Currency"],
-        value: Number(row["Market Value"] || row["Value"] || 0)
-      });
-
-    }else{
-
-      trades.push({
-        portfolio: sheetName,
-        symbol: ticker,
-        quantity: Number(row["Quantity"] || 0),
-        price: Number(row["Book Cost"] || row["Price"] || 0),
-        currency: row["Currency"]
-      });
-
-    }
-
-  });
-
-  return {trades, cash};
-}
-
-function buildMasterPortfolio(name, subs, portfolioData){
-
-  const result = {name, trades:[], cash:[]};
-
-  subs.forEach(sub=>{
-
-    const p = portfolioData[sub];
-    if(!p) return;
-
-    result.trades.push(...p.trades);
-    result.cash.push(...p.cash);
-
-  });
-
-  return result;
-}
-
-async function importAllPortfolios(workbook){
-
-  const portfoliosSheet = workbook["Portfolios"];
-
-  if(!portfoliosSheet){
-    console.warn("Portfolios sheet missing");
-    return {};
-  }
-
-  const {portfolios, masters} = getPortfolioDefinitions(portfoliosSheet);
-
-  const portfolioData = {};
-
-  portfolios.forEach(name=>{
-
-    const rows = workbook[name];
-    if(!rows){
-      console.warn("Sheet missing:", name);
-      return;
-    }
-
-    portfolioData[name] = importPortfolioTrades(name, rows);
-
-  });
-
-  Object.entries(masters).forEach(([name, subs])=>{
-
-    portfolioData[name] = buildMasterPortfolio(name, subs, portfolioData);
-
-  });
-
-  console.log("Imported portfolios:", portfolioData);
-
-  return portfolioData;
-}
-</script>
-
-
-<script>
-/* ===== Live Price Loader via Backend API ===== */
-
-const PRICE_API_BASE = "https://my-api-backend.vercel.app/api/data";
-
-const priceCache = {};
-const CACHE_MS = 60000;
-
-async function fetchPrice(symbol){
-  const now = Date.now();
-
-  if(priceCache[symbol] && now - priceCache[symbol].t < CACHE_MS){
-    return priceCache[symbol].p;
-  }
-
-  const res = await fetch(`${PRICE_API_BASE}?symbol=${symbol}`);
-  const json = await res.json();
-
-  const price = Number(json.price);
-
-  priceCache[symbol] = {p:price, t:now};
-
-  return price;
-}
-
-async function updatePortfolioPrices(portfolioData){
-
-  for(const name in portfolioData){
-
-    const p = portfolioData[name];
-
-    for(const trade of p.trades){
-
-      try{
-        const price = await fetchPrice(trade.symbol);
-        trade.currentPrice = price;
-      }catch(e){
-        console.warn("price fetch failed", trade.symbol);
-      }
-
-    }
-
-  }
-
-  console.log("Prices updated:", portfolioData);
-
-  if(typeof render === "function"){
-    render();
-  }
-}
-
-</script>
-
 </body>
 </html>
