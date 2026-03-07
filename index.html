@@ -2069,58 +2069,67 @@ async function importAllPortfolios(workbook){
 </script>
 
 
+
 <script>
-/* ===== Live Price Loader via Backend API ===== */
+/* ===== Bulk Live Price Loader via Backend API ===== */
 
 const PRICE_API_BASE = "https://my-api-backend.vercel.app/api/data";
 
-const priceCache = {};
-const CACHE_MS = 60000;
+async function loadAllPrices(portfolioData){
 
-async function fetchPrice(symbol){
-  const now = Date.now();
+  try{
 
-  if(priceCache[symbol] && now - priceCache[symbol].t < CACHE_MS){
-    return priceCache[symbol].p;
-  }
+    const symbolsSet = new Set();
 
-  const res = null;
-  const json = await res.json();
-
-  const price = Number(json.price);
-
-  priceCache[symbol] = {p:price, t:now};
-
-  return price;
-}
-
-async function updatePortfolioPrices(portfolioData){
-
-  for(const name in portfolioData){
-
-    const p = portfolioData[name];
-
-    for(const trade of p.trades){
-
-      try{
-        const price = await fetchPrice(trade.symbol);
-        trade.currentPrice = price;
-      }catch(e){
-        console.warn("price fetch failed", trade.symbol);
+    for(const name in portfolioData){
+      const p = portfolioData[name];
+      for(const trade of p.trades){
+        if(trade.symbol){
+          symbolsSet.add(trade.symbol);
+        }
       }
-
     }
 
+    const symbols = Array.from(symbolsSet);
+
+    if(symbols.length === 0) return;
+
+    const url = `${PRICE_API_BASE}?symbols=${symbols.join(",")}`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const priceMap = {};
+
+    data.forEach(item=>{
+      const key = `${item.code}.${item.exchange_short_name}`;
+      priceMap[key] = Number(item.close);
+    });
+
+    for(const name in portfolioData){
+      const p = portfolioData[name];
+
+      for(const trade of p.trades){
+        const price = priceMap[trade.symbol];
+        if(price){
+          trade.currentPrice = price;
+        }
+      }
+    }
+
+    console.log("Bulk prices loaded");
+
+    if(typeof render === "function"){
+      render();
+    }
+
+  }catch(err){
+    console.error("Price fetch failed", err);
   }
 
-  console.log("Prices updated:", portfolioData);
-
-  if(typeof render === "function"){
-    render();
-  }
 }
-
 </script>
+
 
 </body>
 </html>
