@@ -388,10 +388,9 @@
         let isMarketLoading = false;
         let selectedSector = null;
 
-       async function fetchMarketSummary() {
+        async function fetchMarketSummary() {
 
   if (isMarketLoading) return;
-
   isMarketLoading = true;
   render();
 
@@ -401,41 +400,31 @@
 
     for (const sector of MARKET_DATA) {
 
-      const tickers = [];
+      const symbols = sector.tickers.join(",");
 
-      for (const symbol of sector.tickers) {
+      const url = `https://my-api-backend.vercel.app/api/data?symbols=${symbols}`;
 
-        try {
+      const res = await fetch(url);
 
-          const res = null;
+      if (!res.ok) throw new Error("API error");
 
-          const data = await res.json();
+      const data = await res.json();
 
-          tickers.push({
-            symbol: symbol,
-            price: Number(data.price),
-            change: 0
-          });
+      const tickers = data.map(item => ({
+        symbol: `${item.code}.${item.exchange_short_name}`,
+        price: item.close,
+        change: item.change_p
+      }));
 
-        } catch (err) {
-
-          console.warn("Price fetch failed:", symbol);
-
-          tickers.push({
-            symbol: symbol,
-            price: 0,
-            change: 0
-          });
-
-        }
-
-      }
+      const avg =
+        tickers.reduce((sum, t) => sum + (t.change || 0), 0) /
+        (tickers.length || 1);
 
       sectors.push({
         name: sector.sector,
-        avgChange: 0,
+        avgChange: avg,
         status: "Live",
-        trend: "Live pricing",
+        trend: avg >= 0 ? "Up" : "Down",
         tickers
       });
 
