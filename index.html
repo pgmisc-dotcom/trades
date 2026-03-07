@@ -416,9 +416,14 @@
         change: item.change_p
       }));
 
-      const avg =
-        tickers.reduce((sum, t) => sum + (t.change || 0), 0) /
-        (tickers.length || 1);
+      const validChanges = tickers
+  .map(t => t.change)
+  .filter(v => v !== null && v !== undefined && !isNaN(v));
+
+const avg =
+  validChanges.length > 0
+    ? Number((validChanges.reduce((sum, v) => sum + v, 0) / validChanges.length).toFixed(2))
+    : null;
 
       sectors.push({
         name: sector.sector,
