@@ -1,235 +1,212 @@
+
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Portfolio Dashboard</title>
-
+<title>Portfolio Dashboard (Bulk Pricing)</title>
 <style>
-
 body{
-font-family:Arial;
-background:#111;
-color:white;
-padding:20px;
+  font-family: Arial, sans-serif;
+  background:#111;
+  color:#eee;
+  padding:20px;
 }
-
+h2{margin-top:30px}
 table{
-border-collapse:collapse;
-width:100%;
-margin-bottom:30px;
+  border-collapse:collapse;
+  width:100%;
+  margin-top:10px;
 }
-
 th,td{
-padding:8px;
-border-bottom:1px solid #333;
-text-align:right;
+  padding:8px;
+  border-bottom:1px solid #333;
 }
-
-th{
-text-align:left;
-}
-
-.heat{
-color:white;
-font-weight:bold;
-}
-
+th{text-align:left}
+td{text-align:right}
+.heat{color:#fff;font-weight:bold}
 </style>
-
 </head>
 
 <body>
 
 <h2>Market Summary</h2>
-<div id="marketSummary"></div>
+<div id="marketSummary">Loading...</div>
 
 <h2>Portfolio</h2>
-<div id="portfolio"></div>
+<div id="portfolio">Loading...</div>
 
 <script>
 
-const API_URL="https://my-api-backend.vercel.app/api/data";
+const API_URL = "https://my-api-backend.vercel.app/api/data";
 
-const MARKET_DATA=[
-{sector:"Technology",tickers:["AAPL.US","MSFT.US","NVDA.US"]},
-{sector:"Finance",tickers:["JPM.US","GS.US"]}
+const MARKET_DATA = [
+ {sector:"Technology", tickers:["AAPL.US","MSFT.US","NVDA.US"]},
+ {sector:"Finance", tickers:["JPM.US","GS.US"]}
 ];
 
-let portfolioHoldings=[
-{symbol:"AAPL.US",shares:10,price:0,change:0},
-{symbol:"MSFT.US",shares:5,price:0,change:0}
+let portfolioHoldings = [
+ {symbol:"AAPL.US", shares:10},
+ {symbol:"MSFT.US", shares:5}
 ];
 
-let marketSummaryData=[];
+let marketSummaryData = [];
 
 function heatColor(change){
-
-if(change>2) return "#006400";
-if(change>0.5) return "#2ecc71";
-if(change>-0.5) return "#888";
-if(change>-2) return "#e74c3c";
-return "#8b0000";
-
+ if(change > 2) return "#006400";
+ if(change > 0.5) return "#2ecc71";
+ if(change > -0.5) return "#888";
+ if(change > -2) return "#e74c3c";
+ return "#8b0000";
 }
 
 async function fetchPricesBulk(symbols){
 
-const unique=[...new Set(symbols)];
-const tickerString=unique.join(",");
+ const unique = [...new Set(symbols)];
+ const tickerString = unique.join(",");
 
-const res=await fetch(`${API_URL}?symbols=${tickerString}`);
-const data=await res.json();
+ const res = await fetch(`${API_URL}?symbols=${tickerString}`);
+ const data = await res.json();
 
-const map={};
+ const map = {};
 
-for(const item of data){
+ for(const item of data){
 
-const symbol=item.code.includes(".")
-?item.code
-:`${item.code}.${item.exchange_short_name}`;
+   const symbol = item.code.includes(".")
+   ? item.code
+   : `${item.code}.${item.exchange_short_name}`;
 
-map[symbol]={
-price:Number(item.close),
-change:Number(item.change_p),
-prev:Number(item.prev_close)
-};
+   map[symbol] = {
+     price: Number(item.close),
+     change: Number(item.change_p),
+     prev: Number(item.prev_close)
+   };
 
-}
+ }
 
-return map;
-
-}
-
-async function fetchMarketSummary(priceMap){
-
-const sectors=[];
-
-for(const sector of MARKET_DATA){
-
-const tickers=[];
-
-for(const symbol of sector.tickers){
-
-const data=priceMap[symbol]||{price:0,change:0};
-
-tickers.push({
-symbol:symbol,
-price:data.price,
-change:data.change
-});
+ return map;
 
 }
 
-const avgChange=
-tickers.reduce((sum,t)=>sum+t.change,0)/tickers.length;
+async function buildMarketSummary(priceMap){
 
-sectors.push({
-name:sector.sector,
-avgChange:avgChange,
-tickers:tickers
-});
+ const sectors = [];
 
-}
+ for(const sector of MARKET_DATA){
 
-marketSummaryData=sectors;
+   const tickers = [];
+
+   for(const symbol of sector.tickers){
+
+     const data = priceMap[symbol] || {price:0, change:0};
+
+     tickers.push({
+       symbol:symbol,
+       price:data.price,
+       change:data.change
+     });
+
+   }
+
+   const avgChange =
+     tickers.reduce((s,t)=>s+t.change,0) / tickers.length;
+
+   sectors.push({
+     name:sector.sector,
+     avgChange:avgChange
+   });
+
+ }
+
+ marketSummaryData = sectors;
 
 }
 
 function updatePortfolioPrices(priceMap){
 
-for(const h of portfolioHoldings){
+ for(const h of portfolioHoldings){
 
-const data=priceMap[h.symbol];
+   const data = priceMap[h.symbol];
 
-if(!data) continue;
+   if(!data) continue;
 
-h.price=data.price;
-h.change=data.change;
-h.value=h.price*h.shares;
+   h.price = data.price;
+   h.change = data.change;
+   h.value = h.price * h.shares;
 
-}
+ }
 
 }
 
 function render(){
 
-let html="<table><tr><th>Sector</th><th>Avg %</th></tr>";
+ let html = "<table><tr><th>Sector</th><th>Average % Change</th></tr>";
 
-for(const s of marketSummaryData){
+ for(const s of marketSummaryData){
 
-html+=`<tr>
-<td>${s.name}</td>
-<td class="heat" style="background:${heatColor(s.avgChange)}">
-${s.avgChange.toFixed(2)}%
-</td>
-</tr>`;
+   html += `<tr>
+   <td>${s.name}</td>
+   <td class="heat" style="background:${heatColor(s.avgChange)}">
+   ${s.avgChange.toFixed(2)}%
+   </td>
+   </tr>`;
 
-}
+ }
 
-html+="</table>";
+ html += "</table>";
 
-document.getElementById("marketSummary").innerHTML=html;
+ document.getElementById("marketSummary").innerHTML = html;
 
 
-let phtml="<table>";
+ let phtml = "<table>";
+ phtml += "<tr><th>Symbol</th><th>Shares</th><th>Price</th><th>Change%</th><th>Value</th></tr>";
 
-phtml+=`
-<tr>
-<th>Symbol</th>
-<th>Shares</th>
-<th>Price</th>
-<th>Change %</th>
-<th>Value</th>
-</tr>`;
+ for(const h of portfolioHoldings){
 
-for(const h of portfolioHoldings){
+   phtml += `<tr>
+   <td>${h.symbol}</td>
+   <td>${h.shares}</td>
+   <td>${h.price ? h.price.toFixed(2) : 0}</td>
+   <td style="color:${h.change>0 ? '#2ecc71':'#e74c3c'}">
+   ${h.change ? h.change.toFixed(2):0}
+   </td>
+   <td>${h.value ? h.value.toFixed(2):0}</td>
+   </tr>`;
 
-phtml+=`
-<tr>
-<td>${h.symbol}</td>
-<td>${h.shares}</td>
-<td>${h.price.toFixed(2)}</td>
-<td style="color:${h.change>0?"#2ecc71":"#e74c3c"}">
-${h.change.toFixed(2)}
-</td>
-<td>${h.value? h.value.toFixed(2):0}</td>
-</tr>`;
+ }
 
-}
+ phtml += "</table>";
 
-phtml+="</table>";
-
-document.getElementById("portfolio").innerHTML=phtml;
+ document.getElementById("portfolio").innerHTML = phtml;
 
 }
 
 async function loadAllPrices(){
 
-const symbols=[];
+ const symbols = [];
 
-for(const sector of MARKET_DATA){
-for(const t of sector.tickers){
-symbols.push(t);
-}
-}
+ for(const sector of MARKET_DATA){
+   for(const t of sector.tickers){
+     symbols.push(t);
+   }
+ }
 
-for(const h of portfolioHoldings){
-symbols.push(h.symbol);
-}
+ for(const h of portfolioHoldings){
+   symbols.push(h.symbol);
+ }
 
-const priceMap=await fetchPricesBulk(symbols);
+ const priceMap = await fetchPricesBulk(symbols);
 
-await fetchMarketSummary(priceMap);
+ await buildMarketSummary(priceMap);
 
-updatePortfolioPrices(priceMap);
+ updatePortfolioPrices(priceMap);
 
-render();
+ render();
 
 }
 
 loadAllPrices();
 
-setInterval(loadAllPrices,60000);
+setInterval(loadAllPrices, 60000);
 
 </script>
 
